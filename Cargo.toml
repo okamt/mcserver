@@ -1,0 +1,14 @@
+[package]
+name = "mcserver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = "1.7.1"
+num-derive = "0.4.2"
+num-traits = "0.2.19"
+thiserror = "1.0.63"
+tokio = { version = "1.40.0", features = ["full"] }
+tokio-macros = { version = "0.2.0-alpha.6" }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
