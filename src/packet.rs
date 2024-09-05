@@ -5,6 +5,8 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use thiserror::Error;
 
+use crate::connection::ConnectionState;
+
 const VARINT_SEGMENT_BITS: u8 = 0b01111111;
 const VARINT_CONTINUE_BIT: u8 = 0b10000000;
 
@@ -15,7 +17,7 @@ pub trait BufMinecraft {
     fn get_enum<T>(&mut self) -> PacketDecodeResult<T>
     where
         T: FromPrimitive;
-    fn get_string<'a>(&mut self) -> Result<String, VarIntError>;
+    fn get_string<'a>(&mut self) -> Result<String, StringError>;
 }
 
 impl<B: Buf> BufMinecraft for B {
@@ -78,10 +80,10 @@ impl<B: Buf> BufMinecraft for B {
         FromPrimitive::from_i32(varint).ok_or(PacketDecodeError::InvalidEnumValue(varint))
     }
 
-    fn get_string(&mut self) -> Result<String, VarIntError> {
+    fn get_string(&mut self) -> Result<String, StringError> {
         let len = self.get_varint()?.try_into().unwrap();
         let mut string = String::with_capacity(len);
-        self.take(len).reader().read_to_string(&mut string).unwrap();
+        self.take(len).reader().read_to_string(&mut string)?;
         Ok(string)
     }
 }
@@ -92,6 +94,14 @@ pub enum VarIntError {
     TooBig,
 }
 
+#[derive(Error, Debug)]
+pub enum StringError {
+    #[error(transparent)]
+    IO(#[from] std::io::Error),
+    #[error(transparent)]
+    VarInt(#[from] VarIntError),
+}
+
 #[repr(u8)]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Packet {
@@ -99,8 +109,17 @@ pub enum Packet {
         protocol_version: i32,
         server_address: String,
         server_port: u16,
-        next_state: HandshakeNextState,
-    },
+        next_state: ConnectionState,
+    } = 0x00,
+    CustomReportDetails {
+        details: Vec<ReportDetail>,
+    } = 0x7A,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ReportDetail {
+    title: String,
+    description: String,
 }
 
 impl Packet {
@@ -134,6 +153,16 @@ impl Packet {
                 let server_port = buf.get_u16();
                 let next_state = buf.get_enum()?;
 
+                if ![
+                    ConnectionState::Status,
+                    ConnectionState::Login,
+                    ConnectionState::Configuration,
+                ]
+                .contains(&next_state)
+                {
+                    return Err(PacketDecodeError::Specific("handshake: invalid next state"));
+                }
+
                 Ok(Packet::Handshake {
                     protocol_version,
                     server_address,
@@ -163,13 +192,10 @@ pub enum PacketDecodeError {
     WrongOpcode { expected: u8, found: u8 },
     #[error("invalid enum value {0}")]
     InvalidEnumValue(i32),
+    #[error("packet specific error: {0}")]
+    Specific(&'static str),
     #[error(transparent)]
     VarInt(#[from] VarIntError),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, FromPrimitive)]
-pub enum HandshakeNextState {
-    Status = 1,
-    Login = 2,
-    Transfer = 3,
+    #[error(transparent)]
+    String(#[from] StringError),
 }

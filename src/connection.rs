@@ -1,6 +1,7 @@
 use std::io::Cursor;
 
 use bytes::{Buf, BytesMut};
+use num_derive::FromPrimitive;
 use thiserror::Error;
 use tokio::{
     io::AsyncReadExt,
@@ -34,13 +35,13 @@ impl ConnectionManager {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy, FromPrimitive)]
 pub enum ConnectionState {
-    Handshaking,
-    Status,
-    Login,
-    Configuration,
-    Play,
+    Handshaking = 0,
+    Status = 1,
+    Login = 2,
+    Configuration = 3,
+    Play = 4,
 }
 
 #[derive(Debug)]
@@ -72,7 +73,6 @@ impl Connection {
                     Ok(n) => {
                         tracing::trace!("Received {} bytes, attempting to read packet...", n);
                         if let Some(packet) = self.read_packet().await? {
-                            println!("{:?}", packet);
                             todo!();
                         }
                     }
@@ -88,6 +88,7 @@ impl Connection {
     pub async fn read_packet(&mut self) -> ConnectionResult<Option<Packet>> {
         loop {
             if let Some(packet) = self.parse_packet()? {
+                tracing::trace!("{:?}", packet);
                 return Ok(Some(packet));
             }
 
