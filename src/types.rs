@@ -1,6 +1,11 @@
 use std::fmt::{Display, Write};
 
+use bitflags::bitflags;
+use getset::Getters;
+use num_derive::{FromPrimitive, ToPrimitive};
 use thiserror::Error;
+
+use crate::packet::server::ServerConfigurationPacket;
 
 const IDENTIFIER_MAX_LEN: usize = 32767;
 
@@ -69,4 +74,70 @@ pub enum IdentifierError {
     TooLong(String),
     #[error("identifier {0} has illegal character at position {1}, must be one of [a-z0-9.-_] in namespace or [a-z0-9.-_/] in value")]
     IllegalCharacter(String, usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
+pub enum ChatMode {
+    Full = 0,
+    CommandsOnly = 1,
+    Hidden = 2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
+pub enum Hand {
+    Left = 0,
+    Right = 1,
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct DisplayedSkinParts: u8 {
+        const CAPE = 0x01;
+        const JACKET = 0x02;
+        const LEFT_SLEEVE = 0x04;
+        const RIGHT_SLEEVE = 0x08;
+        const LEFT_PANTS_LEG = 0x10;
+        const RIGHT_PANTS_LEG = 0x20;
+        const HAT = 0x40;
+        const UNUSED = 0x80;
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Getters)]
+pub struct ClientInformation {
+    locale: String,
+    view_distance: u8,
+    chat_mode: ChatMode,
+    chat_colors: bool,
+    displayed_skin_parts: DisplayedSkinParts,
+    main_hand: Hand,
+    enable_text_filtering: bool,
+    allow_server_listings: bool,
+}
+
+impl ClientInformation {
+    pub fn from_packet(packet: ServerConfigurationPacket) -> Option<Self> {
+        match packet {
+            ServerConfigurationPacket::ClientInformation {
+                locale,
+                view_distance,
+                chat_mode,
+                chat_colors,
+                displayed_skin_parts,
+                main_hand,
+                enable_text_filtering,
+                allow_server_listings,
+            } => Some(Self {
+                locale,
+                view_distance,
+                chat_mode,
+                chat_colors,
+                displayed_skin_parts,
+                main_hand,
+                enable_text_filtering,
+                allow_server_listings,
+            }),
+            _ => None,
+        }
+    }
 }

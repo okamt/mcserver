@@ -1,6 +1,9 @@
 //! Serverbound packets.
 
-use crate::{packet::ambassador_impl_Packet, types::Identifier};
+use crate::{
+    packet::ambassador_impl_Packet,
+    types::{ChatMode, DisplayedSkinParts, Hand, Identifier},
+};
 use ambassador::Delegate;
 use derive_more::derive::From;
 use num_derive::ToPrimitive;
@@ -161,6 +164,16 @@ impl PacketDecoder for ServerLoginPacket {
 #[derive(Debug, Clone, Eq, PartialEq, ToPrimitive)]
 #[repr(i32)]
 pub enum ServerConfigurationPacket {
+    ClientInformation {
+        locale: String,
+        view_distance: u8,
+        chat_mode: ChatMode,
+        chat_colors: bool,
+        displayed_skin_parts: DisplayedSkinParts,
+        main_hand: Hand,
+        enable_text_filtering: bool,
+        allow_server_listings: bool,
+    } = 0x00,
     ServerboundPluginMessage {
         channel_identifier: Identifier,
         data: Vec<u8>,
@@ -188,6 +201,27 @@ impl PacketDecoder for ServerConfigurationPacket {
         B: BufExt,
     {
         Ok(match packet_id {
+            0x00 => {
+                let locale = buf.get_string()?;
+                let view_distance = buf.get_u8();
+                let chat_mode = buf.get_enum()?;
+                let chat_colors = buf.get_bool();
+                let displayed_skin_parts = DisplayedSkinParts::from_bits(buf.get_u8()).unwrap();
+                let main_hand = buf.get_enum()?;
+                let enable_text_filtering = buf.get_bool();
+                let allow_server_listings = buf.get_bool();
+
+                Self::ClientInformation {
+                    locale,
+                    view_distance,
+                    chat_mode,
+                    chat_colors,
+                    displayed_skin_parts,
+                    main_hand,
+                    enable_text_filtering,
+                    allow_server_listings,
+                }
+            }
             0x02 => {
                 let channel_identifier = buf.get_identifier()?;
                 let data = buf.get_byte_array();

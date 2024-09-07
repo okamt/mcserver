@@ -13,18 +13,21 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::packet::{
-    check_packet,
-    client::{
-        ClientLoginPacket, ClientPacket, ClientStatusPacket, StatusResponse,
-        StatusResponseDescription, StatusResponsePlayers, StatusResponsePlayersSample,
-        StatusResponseVersion,
+use crate::{
+    packet::{
+        check_packet,
+        client::{
+            ClientLoginPacket, ClientPacket, ClientStatusPacket, StatusResponse,
+            StatusResponseDescription, StatusResponsePlayers, StatusResponsePlayersSample,
+            StatusResponseVersion,
+        },
+        server::{
+            ServerConfigurationPacket, ServerHandshakingPacket, ServerLoginPacket, ServerPacket,
+            ServerStatusPacket,
+        },
+        BufMutExt, Packet, PacketCheckOutcome, PacketDecodeError, PacketDecoder, PacketEncodeError,
     },
-    server::{
-        ServerConfigurationPacket, ServerHandshakingPacket, ServerLoginPacket, ServerPacket,
-        ServerStatusPacket,
-    },
-    BufMutExt, Packet, PacketCheckOutcome, PacketDecodeError, PacketDecoder, PacketEncodeError,
+    types::ClientInformation,
 };
 
 pub const TARGET_PROTOCOL_VERSION: i32 = 767;
@@ -69,6 +72,7 @@ pub struct Connection {
     buffer: BytesMut,
     state: ConnectionState,
     can_request_status: bool,
+    client_information: Option<ClientInformation>,
 }
 
 impl Connection {
@@ -78,6 +82,7 @@ impl Connection {
             buffer: BytesMut::zeroed(4096),
             state: ConnectionState::Handshaking,
             can_request_status: false,
+            client_information: None,
         }
     }
 
@@ -232,12 +237,15 @@ impl Connection {
                     data,
                 } => {
                     tracing::trace!(
-                        "Received plugin message in channel {}: {:02X?}",
+                        "Received plugin message in channel {}: {:?}",
                         channel_identifier,
-                        data
+                        String::from_utf8(data)
                     );
 
                     // TODO
+                }
+                ServerConfigurationPacket::ClientInformation { .. } => {
+                    self.client_information = Some(ClientInformation::from_packet(packet).unwrap());
                 }
             },
             ServerPacket::Play(_) => todo!(),
