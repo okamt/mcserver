@@ -1,4 +1,7 @@
-use std::io::Cursor;
+use std::{
+    borrow::{Borrow, Cow},
+    io::Cursor,
+};
 
 use bytes::{Buf, BytesMut};
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -13,10 +16,11 @@ use uuid::Uuid;
 use crate::packet::{
     check_packet,
     client::{
-        ClientPacket, ClientStatusPacket, StatusResponse, StatusResponseDescription,
-        StatusResponsePlayers, StatusResponsePlayersSample, StatusResponseVersion,
+        ClientLoginPacket, ClientPacket, ClientStatusPacket, StatusResponse,
+        StatusResponseDescription, StatusResponsePlayers, StatusResponsePlayersSample,
+        StatusResponseVersion,
     },
-    server::{ServerHandshakingPacket, ServerPacket, ServerStatusPacket},
+    server::{ServerHandshakingPacket, ServerLoginPacket, ServerPacket, ServerStatusPacket},
     BufMutExt, Packet, PacketCheckOutcome, PacketDecodeError, PacketDecoder, PacketEncodeError,
 };
 
@@ -187,19 +191,38 @@ impl Connection {
                         },
                     };
 
-                    self.send_packet(&ClientPacket::Status(status_response))
-                        .await?;
+                    self.send_packet(&status_response.into()).await?;
 
                     self.can_request_status = false;
                 }
                 ServerStatusPacket::PingRequest { payload } => {
-                    self.send_packet(&ClientPacket::Status(ClientStatusPacket::PongResponse {
-                        payload,
-                    }))
-                    .await?;
+                    self.send_packet(&ClientStatusPacket::PongResponse { payload }.into())
+                        .await?;
                 }
             },
-            ServerPacket::Login(_) => todo!(),
+            ServerPacket::Login(packet) => match packet {
+                ServerLoginPacket::LoginStart {
+                    player_username,
+                    player_uuid,
+                } => {
+                    // TODO: client auth, encryption, compression
+
+                    self.send_packet(
+                        &ClientLoginPacket::LoginSuccess {
+                            player_uuid: player_uuid,
+                            player_username: player_username,
+                            properties: Vec::new(),
+                            strict_error_handling: true,
+                        }
+                        .into(),
+                    )
+                    .await?;
+                }
+                ServerLoginPacket::LoginAcknowledged => {
+                    tracing::trace!("Login was acknowledged by the client.");
+                    self.state = ConnectionState::Configuration;
+                }
+            },
             ServerPacket::Configuration(_) => todo!(),
             ServerPacket::Play(_) => todo!(),
         }
@@ -208,7 +231,7 @@ impl Connection {
     }
 
     pub async fn send_packet(&mut self, packet: &ClientPacket) -> SendPacketResult<()> {
-        let encoded_packet = ClientPacket::encode(packet)?;
+        let encoded_packet = packet.encode()?;
         let mut packet_id_buf = BytesMut::with_capacity(5);
         packet_id_buf.put_varint(packet.get_id());
         let mut len_buf = BytesMut::with_capacity(5);

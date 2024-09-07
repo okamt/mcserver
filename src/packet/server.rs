@@ -2,8 +2,10 @@
 
 use crate::packet::ambassador_impl_Packet;
 use ambassador::Delegate;
+use derive_more::derive::From;
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
+use uuid::Uuid;
 
 use crate::connection::ConnectionState;
 
@@ -59,7 +61,7 @@ impl PacketDecoder for ServerHandshakingPacket {
                     return Err(PacketDecodeError::Specific("handshake: invalid next state"));
                 }
 
-                ServerHandshakingPacket::Handshake {
+                Self::Handshake {
                     protocol_version,
                     server_address,
                     server_port,
@@ -105,14 +107,20 @@ impl PacketDecoder for ServerStatusPacket {
 
                 ServerStatusPacket::PingRequest { payload }
             }
-            _ => unimplemented!("status state packet id {:#04X}", packet_id),
+            _ => unimplemented!("server status state packet id {:#04X}", packet_id),
         })
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, ToPrimitive)]
-//#[repr(i32)]
-pub enum ServerLoginPacket {}
+#[repr(i32)]
+pub enum ServerLoginPacket {
+    LoginStart {
+        player_username: String,
+        player_uuid: Uuid,
+    } = 0x00,
+    LoginAcknowledged = 0x03,
+}
 
 impl Packet for ServerLoginPacket {
     fn get_id(&self) -> i32 {
@@ -134,7 +142,19 @@ impl PacketDecoder for ServerLoginPacket {
     where
         B: BufExt,
     {
-        todo!()
+        Ok(match packet_id {
+            0x00 => {
+                let player_username = buf.get_string()?;
+                let player_uuid = buf.get_uuid();
+
+                Self::LoginStart {
+                    player_username,
+                    player_uuid,
+                }
+            }
+            0x03 => Self::LoginAcknowledged,
+            _ => unimplemented!("server login state packet id {:#04X}", packet_id),
+        })
     }
 }
 
@@ -162,7 +182,9 @@ impl PacketDecoder for ServerConfigurationPacket {
     where
         B: BufExt,
     {
-        todo!()
+        Ok(match packet_id {
+            _ => unimplemented!("server configuration state packet id {:#04X}", packet_id),
+        })
     }
 }
 
@@ -190,11 +212,13 @@ impl PacketDecoder for ServerPlayPacket {
     where
         B: BufExt,
     {
-        todo!()
+        Ok(match packet_id {
+            _ => unimplemented!("server play state packet id {:#04X}", packet_id),
+        })
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Delegate)]
+#[derive(Debug, Clone, Eq, PartialEq, From, Delegate)]
 #[delegate(Packet)]
 pub enum ServerPacket {
     Handshaking(ServerHandshakingPacket),

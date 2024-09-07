@@ -3,6 +3,7 @@
 use crate::packet::ambassador_impl_Packet;
 use ambassador::Delegate;
 use bytes::{BufMut, BytesMut};
+use derive_more::derive::From;
 use num_derive::ToPrimitive;
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
@@ -57,7 +58,20 @@ impl PacketDecoder for ClientStatusPacket {
 #[derive(Debug, Clone, Eq, PartialEq, ToPrimitive)]
 #[repr(i32)]
 pub enum ClientLoginPacket {
-    None,
+    LoginSuccess {
+        player_uuid: Uuid,
+        player_username: String,
+        properties: Vec<ClientLoginSuccessProperty>,
+        strict_error_handling: bool,
+    } = 0x02,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ClientLoginSuccessProperty {
+    name: String,
+    value: String,
+    is_signed: bool,
+    signature: Option<String>,
 }
 
 impl Packet for ClientLoginPacket {
@@ -66,7 +80,36 @@ impl Packet for ClientLoginPacket {
     }
 
     fn encode(&self) -> PacketEncodeResult<Vec<u8>> {
-        todo!()
+        let mut buf = BytesMut::with_capacity(4096);
+
+        match self {
+            ClientLoginPacket::LoginSuccess {
+                player_uuid,
+                player_username,
+                properties,
+                strict_error_handling,
+            } => {
+                buf.put_uuid(player_uuid);
+                buf.put_string(player_username);
+                buf.put_varint(properties.len().try_into().unwrap());
+                for property in properties {
+                    buf.put_string(&property.name);
+                    buf.put_string(&property.value);
+                    buf.put_bool(property.is_signed);
+                    if property.is_signed {
+                        buf.put_string(
+                            property
+                                .signature
+                                .as_ref()
+                                .expect("signature must be present if is_signed is true"),
+                        );
+                    }
+                }
+                buf.put_bool(*strict_error_handling);
+            }
+        }
+
+        Ok(buf.into())
     }
 }
 
@@ -144,7 +187,7 @@ impl PacketDecoder for ClientPlayPacket {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Delegate)]
+#[derive(Debug, Clone, Eq, PartialEq, From, Delegate)]
 #[delegate(Packet)]
 pub enum ClientPacket {
     Status(ClientStatusPacket),

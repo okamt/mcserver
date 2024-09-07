@@ -4,6 +4,7 @@ use ambassador::delegatable_trait;
 use bytes::{Buf, BufMut};
 use num_traits::{FromPrimitive, ToPrimitive};
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::connection::ConnectionState;
 
@@ -21,6 +22,8 @@ pub trait BufExt: Buf {
     where
         T: FromPrimitive;
     fn get_string(&mut self) -> Result<String, StringError>;
+    fn get_uuid(&mut self) -> Uuid;
+    fn get_bool(&mut self) -> bool;
 }
 
 pub trait BufMutExt: BufMut {
@@ -31,6 +34,8 @@ pub trait BufMutExt: BufMut {
     fn put_string<S>(&mut self, string: S)
     where
         S: AsRef<str>;
+    fn put_uuid(&mut self, uuid: &Uuid);
+    fn put_bool(&mut self, boolean: bool);
 }
 
 impl<B: Buf> BufExt for B {
@@ -99,6 +104,14 @@ impl<B: Buf> BufExt for B {
         self.take(len).reader().read_to_string(&mut string)?;
         Ok(string)
     }
+
+    fn get_uuid(&mut self) -> Uuid {
+        Uuid::from_u128(self.get_u128())
+    }
+
+    fn get_bool(&mut self) -> bool {
+        self.get_u8() == 0x01
+    }
 }
 
 impl<B: BufMut> BufMutExt for B {
@@ -128,6 +141,17 @@ impl<B: BufMut> BufMutExt for B {
     {
         self.put_varint(string.as_ref().len().try_into().unwrap());
         self.put_slice(string.as_ref().as_bytes());
+    }
+
+    fn put_uuid(&mut self, uuid: &Uuid) {
+        self.put_u128(uuid.as_u128());
+    }
+
+    fn put_bool(&mut self, boolean: bool) {
+        self.put_u8(match boolean {
+            true => 0x01,
+            false => 0x00,
+        })
     }
 }
 

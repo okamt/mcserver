@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 ambassador = "0.4.1"
 bytes = "1.7.1"
+derive_more = { version = "1.0.0", features = ["from"] }
 enum_delegate = "0.2.0"
 num-derive = { git = "https://github.com/okamt/num-derive" }
 num-traits = "0.2.19"
