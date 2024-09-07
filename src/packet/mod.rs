@@ -6,7 +6,10 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::connection::ConnectionState;
+use crate::{
+    connection::ConnectionState,
+    types::{Identifier, IdentifierError},
+};
 
 const VARINT_SEGMENT_BITS: u8 = 0b01111111;
 const VARINT_CONTINUE_BIT: u8 = 0b10000000;
@@ -15,15 +18,17 @@ pub mod client;
 pub mod server;
 
 pub trait BufExt: Buf {
-    fn get_varint(&mut self) -> Result<i32, VarIntError>;
-    fn get_varint_with_at_most(&mut self, bytes: usize) -> Result<i32, VarIntError>;
-    fn try_get_varint_with_at_most(&mut self, bytes: usize) -> Result<Option<i32>, VarIntError>;
+    fn get_varint(&mut self) -> Result<i32, GetVarIntError>;
+    fn get_varint_with_at_most(&mut self, bytes: usize) -> Result<i32, GetVarIntError>;
+    fn try_get_varint_with_at_most(&mut self, bytes: usize) -> Result<Option<i32>, GetVarIntError>;
     fn get_enum<T>(&mut self) -> PacketDecodeResult<T>
     where
         T: FromPrimitive;
-    fn get_string(&mut self) -> Result<String, StringError>;
+    fn get_string(&mut self) -> Result<String, GetStringError>;
     fn get_uuid(&mut self) -> Uuid;
     fn get_bool(&mut self) -> bool;
+    fn get_identifier(&mut self) -> Result<Identifier, GetIdentifierError>;
+    fn get_byte_array(&mut self) -> Vec<u8>;
 }
 
 pub trait BufMutExt: BufMut {
@@ -36,14 +41,15 @@ pub trait BufMutExt: BufMut {
         S: AsRef<str>;
     fn put_uuid(&mut self, uuid: &Uuid);
     fn put_bool(&mut self, boolean: bool);
+    fn put_identifier(&mut self, identifier: &Identifier);
 }
 
 impl<B: Buf> BufExt for B {
-    fn get_varint(&mut self) -> Result<i32, VarIntError> {
+    fn get_varint(&mut self) -> Result<i32, GetVarIntError> {
         self.get_varint_with_at_most(4)
     }
 
-    fn get_varint_with_at_most(&mut self, bytes: usize) -> Result<i32, VarIntError> {
+    fn get_varint_with_at_most(&mut self, bytes: usize) -> Result<i32, GetVarIntError> {
         let mut value = 0;
         let mut position = 0;
 
@@ -58,14 +64,14 @@ impl<B: Buf> BufExt for B {
             position += 7;
 
             if position >= bytes * 8 {
-                return Err(VarIntError::TooBig);
+                return Err(GetVarIntError::TooBig);
             }
         }
 
         Ok(value)
     }
 
-    fn try_get_varint_with_at_most(&mut self, bytes: usize) -> Result<Option<i32>, VarIntError> {
+    fn try_get_varint_with_at_most(&mut self, bytes: usize) -> Result<Option<i32>, GetVarIntError> {
         let mut value = 0;
         let mut position = 0;
 
@@ -83,7 +89,7 @@ impl<B: Buf> BufExt for B {
             position += 7;
 
             if position >= bytes * 8 {
-                return Err(VarIntError::TooBig);
+                return Err(GetVarIntError::TooBig);
             }
         }
 
@@ -98,7 +104,7 @@ impl<B: Buf> BufExt for B {
         FromPrimitive::from_i32(varint).ok_or(PacketDecodeError::InvalidEnumValue(varint))
     }
 
-    fn get_string(&mut self) -> Result<String, StringError> {
+    fn get_string(&mut self) -> Result<String, GetStringError> {
         let len = self.get_varint()?.try_into().unwrap();
         let mut string = String::with_capacity(len);
         self.take(len).reader().read_to_string(&mut string)?;
@@ -111,6 +117,18 @@ impl<B: Buf> BufExt for B {
 
     fn get_bool(&mut self) -> bool {
         self.get_u8() == 0x01
+    }
+
+    fn get_identifier(&mut self) -> Result<Identifier, GetIdentifierError> {
+        Ok(self.get_string()?.try_into()?)
+    }
+
+    fn get_byte_array(&mut self) -> Vec<u8> {
+        let mut vec = Vec::with_capacity(self.remaining());
+        while self.has_remaining() {
+            vec.push(self.get_u8());
+        }
+        vec
     }
 }
 
@@ -153,20 +171,37 @@ impl<B: BufMut> BufMutExt for B {
             false => 0x00,
         })
     }
+
+    fn put_identifier(&mut self, identifier: &Identifier) {
+        let namespace = identifier.namespace();
+        let value = identifier.value();
+        self.put_varint((namespace.len() + 1 + value.len()).try_into().unwrap());
+        self.put_slice(namespace.as_bytes());
+        self.put_slice(b":");
+        self.put_slice(value.as_bytes());
+    }
 }
 
 #[derive(Error, Debug)]
-pub enum VarIntError {
+pub enum GetVarIntError {
     #[error("varint is too big")]
     TooBig,
 }
 
 #[derive(Error, Debug)]
-pub enum StringError {
+pub enum GetStringError {
     #[error(transparent)]
     IO(#[from] std::io::Error),
     #[error(transparent)]
-    VarInt(#[from] VarIntError),
+    VarInt(#[from] GetVarIntError),
+}
+
+#[derive(Error, Debug)]
+pub enum GetIdentifierError {
+    #[error(transparent)]
+    String(#[from] GetStringError),
+    #[error(transparent)]
+    Identifier(#[from] IdentifierError),
 }
 
 pub fn check_packet<B>(buf: &mut B) -> PacketDecodeResult<PacketCheckOutcome>
@@ -224,9 +259,11 @@ pub enum PacketDecodeError {
     #[error("packet specific error: {0}")]
     Specific(&'static str),
     #[error(transparent)]
-    VarInt(#[from] VarIntError),
+    VarInt(#[from] GetVarIntError),
     #[error(transparent)]
-    String(#[from] StringError),
+    String(#[from] GetStringError),
+    #[error(transparent)]
+    Identifier(#[from] GetIdentifierError),
 }
 
 pub type PacketEncodeResult<T> = Result<T, PacketEncodeError>;

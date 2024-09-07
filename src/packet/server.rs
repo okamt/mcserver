@@ -1,6 +1,6 @@
 //! Serverbound packets.
 
-use crate::packet::ambassador_impl_Packet;
+use crate::{packet::ambassador_impl_Packet, types::Identifier};
 use ambassador::Delegate;
 use derive_more::derive::From;
 use num_derive::ToPrimitive;
@@ -159,8 +159,13 @@ impl PacketDecoder for ServerLoginPacket {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, ToPrimitive)]
-//#[repr(i32)]
-pub enum ServerConfigurationPacket {}
+#[repr(i32)]
+pub enum ServerConfigurationPacket {
+    ServerboundPluginMessage {
+        channel_identifier: Identifier,
+        data: Vec<u8>,
+    } = 0x02,
+}
 
 impl Packet for ServerConfigurationPacket {
     fn get_id(&self) -> i32 {
@@ -183,6 +188,15 @@ impl PacketDecoder for ServerConfigurationPacket {
         B: BufExt,
     {
         Ok(match packet_id {
+            0x02 => {
+                let channel_identifier = buf.get_identifier()?;
+                let data = buf.get_byte_array();
+
+                Self::ServerboundPluginMessage {
+                    channel_identifier,
+                    data,
+                }
+            }
             _ => unimplemented!("server configuration state packet id {:#04X}", packet_id),
         })
     }

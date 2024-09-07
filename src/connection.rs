@@ -20,7 +20,10 @@ use crate::packet::{
         StatusResponseDescription, StatusResponsePlayers, StatusResponsePlayersSample,
         StatusResponseVersion,
     },
-    server::{ServerHandshakingPacket, ServerLoginPacket, ServerPacket, ServerStatusPacket},
+    server::{
+        ServerConfigurationPacket, ServerHandshakingPacket, ServerLoginPacket, ServerPacket,
+        ServerStatusPacket,
+    },
     BufMutExt, Packet, PacketCheckOutcome, PacketDecodeError, PacketDecoder, PacketEncodeError,
 };
 
@@ -223,7 +226,20 @@ impl Connection {
                     self.state = ConnectionState::Configuration;
                 }
             },
-            ServerPacket::Configuration(_) => todo!(),
+            ServerPacket::Configuration(packet) => match packet {
+                ServerConfigurationPacket::ServerboundPluginMessage {
+                    channel_identifier,
+                    data,
+                } => {
+                    tracing::trace!(
+                        "Received plugin message in channel {}: {:02X?}",
+                        channel_identifier,
+                        data
+                    );
+
+                    // TODO
+                }
+            },
             ServerPacket::Play(_) => todo!(),
         }
 
