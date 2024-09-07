@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use mcserver::MinecraftServer;
+use server::MinecraftServer;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
 
