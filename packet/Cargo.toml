@@ -1,0 +1,17 @@
+[package]
+name = "packet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = "1.7.1"
+num-derive = { git = "https://github.com/okamt/num-derive" }
+num-traits = "0.2.19"
+protocol = { path = "../protocol" }
+packet-derive = { path = "../packet-derive" }
+protocol-derive = { path = "../protocol-derive" }
+thiserror = "1.0.63"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+uuid = "1.10.0"
+derive_more = { version = "1.0.0", features = ["from"] }

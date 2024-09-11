@@ -1,10 +1,16 @@
-use std::{
-    borrow::{Borrow, Cow},
-    io::Cursor,
-};
+use std::convert::Infallible;
+use std::io::Cursor;
 
 use bytes::{Buf, BytesMut};
-use num_derive::{FromPrimitive, ToPrimitive};
+use packet::client::*;
+use packet::server::*;
+use packet::Packet;
+use packet::PacketDecodeError;
+use packet::{server::ServerPacket, PacketCheckOutcome, PacketDecodeContext};
+use protocol::buf;
+use protocol::DecodeError;
+use protocol::EncodeError;
+use protocol::{ClientInformation, ConnectionState, Decodable};
 use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -12,23 +18,6 @@ use tokio::{
     task::JoinHandle,
 };
 use uuid::Uuid;
-
-use crate::{
-    packet::{
-        check_packet,
-        client::{
-            ClientLoginPacket, ClientPacket, ClientStatusPacket, StatusResponse,
-            StatusResponseDescription, StatusResponsePlayers, StatusResponsePlayersSample,
-            StatusResponseVersion,
-        },
-        server::{
-            ServerConfigurationPacket, ServerHandshakingPacket, ServerLoginPacket, ServerPacket,
-            ServerStatusPacket,
-        },
-        BufMutExt, Packet, PacketCheckOutcome, PacketDecodeError, PacketDecoder, PacketEncodeError,
-    },
-    types::ClientInformation,
-};
 
 pub const TARGET_PROTOCOL_VERSION: i32 = 767;
 
@@ -54,16 +43,6 @@ impl ConnectionManager {
             connection.start_process().await;
         }
     }
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Copy, FromPrimitive, ToPrimitive)]
-#[repr(i32)]
-pub enum ConnectionState {
-    Handshaking = 0,
-    Status = 1,
-    Login = 2,
-    Configuration = 3,
-    Play = 4,
 }
 
 #[derive(Debug)]
@@ -130,14 +109,15 @@ impl Connection {
     pub fn parse_packet(&mut self) -> ConnectionResult<Option<ServerPacket>> {
         let mut buf = Cursor::new(&self.buffer[..]);
 
-        match check_packet(&mut buf) {
+        match packet::check_packet(&mut buf) {
             Ok(PacketCheckOutcome::Ok { len, packet_id }) => {
                 let full_len = buf.position() as usize;
                 let packet = ServerPacket::decode(
-                    self.state,
-                    len,
-                    packet_id,
                     &mut buf.copy_to_bytes(len.try_into().unwrap()),
+                    PacketDecodeContext {
+                        connection_state: self.state,
+                        packet_id,
+                    },
                 )?;
                 self.buffer.advance(full_len);
                 Ok(Some(packet))
@@ -150,12 +130,18 @@ impl Connection {
     pub async fn process_packet(&mut self, packet: ServerPacket) -> ProcessPacketResult<()> {
         match packet {
             ServerPacket::Handshaking(packet) => match packet {
-                ServerHandshakingPacket::Handshake {
+                ServerHandshakingPacket::HandshakePacket(HandshakePacket {
                     protocol_version,
                     server_address,
                     server_port,
                     next_state,
-                } => {
+                }) => {
+                    tracing::trace!(
+                        "Connected through address {}:{}.",
+                        server_address,
+                        server_port
+                    );
+
                     if protocol_version != TARGET_PROTOCOL_VERSION {
                         tracing::trace!("Incompatible protocol version {}.", protocol_version);
                         return Err(ProcessPacketError::IncompatibleProtocolVersion(
@@ -169,7 +155,7 @@ impl Connection {
                 }
             },
             ServerPacket::Status(packet) => match packet {
-                ServerStatusPacket::StatusRequest => {
+                ServerStatusPacket::StatusRequestPacket(StatusRequestPacket {}) => {
                     if !self.can_request_status {
                         tracing::trace!(
                             "Client is not currently allowed to request status, ignoring."
@@ -177,65 +163,64 @@ impl Connection {
                         return Ok(());
                     }
 
-                    let status_response = ClientStatusPacket::StatusResponse {
-                        response: StatusResponse {
-                            version: StatusResponseVersion {
-                                name: "1.21.1".into(),
-                                protocol: 767,
+                    let status_response =
+                        ClientStatusPacket::StatusResponsePacket(StatusResponsePacket {
+                            response: StatusResponse {
+                                version: StatusResponseVersion {
+                                    name: "1.21.1".into(),
+                                    protocol: 767,
+                                },
+                                players: StatusResponsePlayers {
+                                    max: 10000000,
+                                    online: 1,
+                                    sample: vec![StatusResponsePlayersSample {
+                                        name: "hi".into(),
+                                        id: Uuid::new_v4(),
+                                    }],
+                                },
+                                description: StatusResponseDescription {
+                                    text: "Blazing fast server".into(),
+                                },
+                                favicon: "".into(),
+                                enforces_secure_chat: false,
                             },
-                            players: StatusResponsePlayers {
-                                max: 10000000,
-                                online: 1,
-                                sample: vec![StatusResponsePlayersSample {
-                                    name: "hi".into(),
-                                    id: Uuid::new_v4(),
-                                }],
-                            },
-                            description: StatusResponseDescription {
-                                text: "Blazing fast server".into(),
-                            },
-                            favicon: "".into(),
-                            enforces_secure_chat: false,
-                        },
-                    };
+                        });
 
-                    self.send_packet(&status_response.into()).await?;
+                    self.send_packet(&status_response).await?;
 
                     self.can_request_status = false;
                 }
-                ServerStatusPacket::PingRequest { payload } => {
-                    self.send_packet(&ClientStatusPacket::PongResponse { payload }.into())
-                        .await?;
+                ServerStatusPacket::PingRequestPacket(PingRequestPacket { payload }) => {
+                    self.send_packet(&PongResponsePacket { payload }).await?;
                 }
             },
             ServerPacket::Login(packet) => match packet {
-                ServerLoginPacket::LoginStart {
+                ServerLoginPacket::LoginStartPacket(LoginStartPacket {
                     player_username,
                     player_uuid,
-                } => {
+                }) => {
                     // TODO: client auth, encryption, compression
 
-                    self.send_packet(
-                        &ClientLoginPacket::LoginSuccess {
-                            player_uuid: player_uuid,
-                            player_username: player_username,
-                            properties: Vec::new(),
-                            strict_error_handling: true,
-                        }
-                        .into(),
-                    )
+                    self.send_packet(&LoginSuccessPacket {
+                        player_uuid: player_uuid,
+                        player_username: player_username,
+                        properties: Vec::new(),
+                        strict_error_handling: true,
+                    })
                     .await?;
                 }
-                ServerLoginPacket::LoginAcknowledged => {
+                ServerLoginPacket::LoginAcknowledgedPacket(LoginAcknowledgedPacket {}) => {
                     tracing::trace!("Login was acknowledged by the client.");
                     self.state = ConnectionState::Configuration;
                 }
             },
             ServerPacket::Configuration(packet) => match packet {
-                ServerConfigurationPacket::ServerboundPluginMessage {
-                    channel_identifier,
-                    data,
-                } => {
+                ServerConfigurationPacket::ServerboundPluginMessagePacket(
+                    ServerboundPluginMessagePacket {
+                        channel_identifier,
+                        data,
+                    },
+                ) => {
                     tracing::trace!(
                         "Received plugin message in channel {}: {:?}",
                         channel_identifier,
@@ -244,8 +229,8 @@ impl Connection {
 
                     // TODO
                 }
-                ServerConfigurationPacket::ClientInformation { .. } => {
-                    self.client_information = Some(ClientInformation::from_packet(packet).unwrap());
+                ServerConfigurationPacket::ClientInformationPacket(packet) => {
+                    self.client_information = Some(packet.into());
                 }
             },
             ServerPacket::Play(_) => todo!(),
@@ -254,12 +239,17 @@ impl Connection {
         Ok(())
     }
 
-    pub async fn send_packet(&mut self, packet: &ClientPacket) -> SendPacketResult<()> {
-        let encoded_packet = packet.encode()?;
+    pub async fn send_packet<P: Packet + std::fmt::Debug>(
+        &mut self,
+        packet: &P,
+    ) -> SendPacketResult<()> {
+        let mut encoded_packet = BytesMut::with_capacity(4096);
+        packet.encode(&mut encoded_packet, ())?;
         let mut packet_id_buf = BytesMut::with_capacity(5);
-        packet_id_buf.put_varint(packet.get_id());
+        buf::put_varint(&mut packet_id_buf, packet.get_id());
         let mut len_buf = BytesMut::with_capacity(5);
-        len_buf.put_varint(
+        buf::put_varint(
+            &mut len_buf,
             (encoded_packet.len() + packet_id_buf.len())
                 .try_into()
                 .unwrap(),
@@ -280,11 +270,11 @@ pub type ConnectionResult<T> = Result<T, ConnectionError>;
 #[derive(Error, Debug)]
 pub enum ConnectionError {
     #[error("packet decode error: {0}")]
-    PacketDecode(#[from] PacketDecodeError),
+    PacketDecode(#[from] DecodeError<PacketDecodeError>),
     #[error("error while processing packet: {0}")]
     ProcessPacket(#[from] ProcessPacketError),
     #[error(transparent)]
-    IO(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
     #[error("connection reset by peer")]
     ResetByPeer,
 }
@@ -296,9 +286,9 @@ pub enum ProcessPacketError {
     #[error("incompatible protocol version: {0}")]
     IncompatibleProtocolVersion(i32),
     #[error(transparent)]
-    PacketEncode(#[from] PacketEncodeError),
+    PacketEncode(#[from] EncodeError<Infallible>),
     #[error(transparent)]
-    IO(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
     #[error(transparent)]
     SendPacket(#[from] SendPacketError),
 }
@@ -308,7 +298,7 @@ pub type SendPacketResult<T> = Result<T, SendPacketError>;
 #[derive(Error, Debug)]
 pub enum SendPacketError {
     #[error(transparent)]
-    PacketEncode(#[from] PacketEncodeError),
+    PacketEncode(#[from] EncodeError<Infallible>),
     #[error(transparent)]
-    IO(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
 }

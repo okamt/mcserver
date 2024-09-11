@@ -1,4 +1,4 @@
 [workspace]
 
-members = ["server", "server-macros"]
+members = ["server", "packet", "packet-derive", "protocol", "protocol-derive"]
 resolver = "2"
