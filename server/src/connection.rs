@@ -213,6 +213,7 @@ impl Connection {
                     tracing::trace!("Login was acknowledged by the client.");
                     self.state = ConnectionState::Configuration;
                 }
+                _ => todo!(),
             },
             ServerPacket::Configuration(packet) => match packet {
                 ServerConfigurationPacket::ServerboundPluginMessagePacket(

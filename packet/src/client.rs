@@ -7,6 +7,7 @@ use bytes::{Buf, BufMut};
 use derive_more::derive::From;
 use protocol::{
     buf::{OptionProtocolContext, VecProtocolContext},
+    identifier::Identifier,
     Decodable, DecodeError, Encodable, EncodeError,
 };
 use protocol_derive::Protocol;
@@ -31,6 +32,15 @@ packets! {
 packets! {
     ClientLoginPacket
 
+    LoginDisconnectPacket {} = 0x00
+    EncryptionRequestPacket {
+        server_id: String,
+        #[protocol(ctx = VecProtocolContext::LengthPrefixed)]
+        public_key: Vec<u8>,
+        #[protocol(ctx = VecProtocolContext::LengthPrefixed)]
+        verify_token: Vec<u8>,
+        should_authenticate: bool,
+    } = 0x01
     LoginSuccessPacket {
         player_uuid: Uuid,
         player_username: String,
@@ -38,6 +48,20 @@ packets! {
         properties: Vec<ClientLoginSuccessProperty>,
         strict_error_handling: bool,
     } = 0x02
+    SetCompressionPacket {
+        #[protocol(varint)]
+        packet_size_threshold: i32,
+    } = 0x03
+    LoginPluginRequestPacket {
+        #[protocol(varint)]
+        message_id: i32,
+        channel: Identifier,
+        #[protocol(ctx = VecProtocolContext::Remaining)]
+        data: Vec<u8>,
+    } = 0x04
+    LoginCookieRequestPacket {
+        key: Identifier,
+    } = 0x05
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Protocol)]

@@ -42,6 +42,19 @@ packets! {
         player_username: String,
         player_uuid: Uuid,
     } = 0x00
+    EncryptionResponsePacket {
+        #[protocol(ctx = VecProtocolContext::LengthPrefixed)]
+        shared_secret: Vec<u8>,
+        #[protocol(ctx = VecProtocolContext::LengthPrefixed)]
+        verify_token: Vec<u8>,
+    } = 0x01
+    LoginPluginResponsePacket {
+        #[protocol(varint)]
+        message_id: i32,
+        successful: bool,
+        #[protocol(ctx = VecProtocolContext::Remaining)]
+        data: Vec<u8>,
+    } = 0x02
     LoginAcknowledgedPacket {} = 0x03
 }
 
