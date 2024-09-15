@@ -1,4 +1,11 @@
 [workspace]
 
-members = ["server", "packet", "packet-derive", "protocol", "protocol-derive"]
+members = [
+    "server",
+    "packet",
+    "packet-derive",
+    "protocol",
+    "protocol-derive",
+    "nbt",
+]
 resolver = "2"

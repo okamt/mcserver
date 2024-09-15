@@ -75,7 +75,17 @@ pub struct ClientLoginSuccessProperty {
 packets! {
     ClientConfigurationPacket
 
-    None1 {} = 0x00
+    ConfigurationCookieRequestPacket {
+        key: Identifier,
+    } = 0x00
+    ConfigurationClientboundPluginMessage {
+        channel: Identifier,
+        #[protocol(ctx = VecProtocolContext::Remaining)]
+        data: Vec<u8>,
+    } = 0x01
+    ConfigurationDisconnect {
+
+    } = 0x02
 }
 
 packets! {

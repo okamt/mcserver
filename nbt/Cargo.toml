@@ -1,0 +1,13 @@
+[package]
+name = "nbt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytemuck = "1.18.0"
+bytes = "1.7.1"
+simd_cesu8 = "1.0.1"
+thiserror = "1.0.63"
+
+[dev-dependencies]
+flate2 = "1.0.33"
