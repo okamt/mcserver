@@ -178,8 +178,8 @@ impl From<u64> for ListData {
 ///
 /// For more information on the "tape" idea:
 ///
-/// - https://simdjson.org/api/0.4.0/md_doc_tape.html
-/// - https://nickb.dev/blog/parsing-performance-improvement-with-tapes-and-spacial-locality/
+/// - <https://simdjson.org/api/0.4.0/md_doc_tape.html>
+/// - <https://nickb.dev/blog/parsing-performance-improvement-with-tapes-and-spacial-locality/>
 pub struct Tape(pub(crate) Vec<TapeItem>);
 
 impl<Idx> Index<Idx> for Tape
