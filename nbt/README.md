@@ -9,7 +9,9 @@ NBT parsing crate.
 
 ## Todo
 
-- [ ] Cache parsed results
+- [x] Cache parsed results
 - [ ] Write more tests
 - [ ] Ser/de from/into structs
 - [ ] Switch to byteorder maybe
+- [ ] Format NBT
+- [ ] Visitor API

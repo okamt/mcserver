@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 bytemuck = "1.18.0"
 bytes = "1.7.1"
+once_map = { git = "https://github.com/okamt/once_map" }
+self_cell = "1.0.4"
 simd_cesu8 = "1.0.1"
 thiserror = "1.0.63"
 

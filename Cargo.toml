@@ -9,3 +9,8 @@ members = [
     "nbt",
 ]
 resolver = "2"
+
+[patch.crates-io]
+# Need this (StableDeref for Cow<'a, str>): https://github.com/Storyyeller/stable_deref_trait/commit/3d0b532c4017b3b0d8f35e3d34828820062a6642
+# For storing NBT strings in the OnceMap cache
+stable_deref_trait = { git = "https://github.com/Storyyeller/stable_deref_trait", rev = "59a35e0a40041133c6b8744f2b62f922e7d18d5b" }

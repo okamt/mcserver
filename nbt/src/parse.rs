@@ -1,19 +1,20 @@
+//! Internal parsing stuff.
+
 use bytes::Buf;
 
 use crate::*;
 
-/// An item in a `Tape`.
-#[repr(C)]
+/// An item in a [`Tape`].
 pub struct TapeItem {
     /// `LLLLLLLLTT##NNNN` where:
     ///
     /// - If is list:
-    ///     - `L` is the list len (`i32`)
-    ///     - `T` is the list tag (`u8`)
+    ///     - `L` is the list len ([`i32`])
+    ///     - `T` is the list tag ([`u8`])
     /// - If is list item:
     ///     - `T` is `0xFF`
-    /// - `#` is the Tag (`u8`)
-    /// - `N` is the name length (`u16`)
+    /// - `#` is the Tag ([`u8`])
+    /// - `N` is the name length ([`u16`])
     list_data_tag_and_name_len: u64,
     /// The position in the NBT source.
     source_pos: u64,
@@ -123,8 +124,10 @@ impl Debug for TapeItem {
     }
 }
 
-/// NBT list data compressed into a `u64`. `##000000LLLLLLLL` where `#` is the list tag and `L` is the list length.
-/// This is not what is actually stored in `TapeItem.data`, instead it's used for the parsing stack.
+/// NBT list data compressed into a [`u64`].
+///
+/// `##000000LLLLLLLL` where `#` is the list tag and `L` is the list length.
+/// This is not what is actually stored in [`TapeItem::data`], instead it's used for the parsing stack.
 #[repr(transparent)]
 #[derive(Clone, Copy)]
 struct ListData(u64);
@@ -172,7 +175,7 @@ impl From<u64> for ListData {
 }
 
 /// A flat representation of NBT data for easier traversal and better spatial locality.
-/// This is an intermediate format, end users should look at `Nbt`.
+/// This is an intermediate format, end users should look at [`NbtParser`].
 ///
 /// Contains indices to the underlying NBT data source, so must be always used with the same source.
 ///

@@ -1,5 +1,8 @@
+//! NBT tag representation.
+
 use std::fmt::{Debug, Display};
 
+/// NBT tag representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Tag {
