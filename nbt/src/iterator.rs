@@ -7,7 +7,6 @@ use super::*;
 /// An iterator over an NBT compound or list. Uses the `Container` typestate to provide different [`Iterator`] implementations.
 pub struct NbtIterator<'source, 'nbt, Container>
 where
-    'source: 'nbt,
     Container: NbtContainer,
 {
     parser: &'nbt NbtParser<'source>,
@@ -32,10 +31,10 @@ where
 }
 
 impl<'source, 'nbt> NbtIterator<'source, 'nbt, NbtCompound> {
-    /// Makes an [`NbtIterator`] over the root compound of `nbt`.
-    pub fn from_root(nbt: &'nbt NbtParser<'source>) -> Self {
+    /// Makes an [`NbtIterator`] over the root compound of the [`NbtParser`].
+    pub fn from_root(parser: &'nbt NbtParser<'source>) -> Self {
         Self {
-            parser: nbt,
+            parser,
             tape_pos: 1,
             finished: false,
             _phantom: PhantomData,
@@ -44,19 +43,27 @@ impl<'source, 'nbt> NbtIterator<'source, 'nbt, NbtCompound> {
 }
 
 impl<'source, 'nbt> Iterator for NbtIterator<'source, 'nbt, NbtCompound> {
-    type Item = (Cow<'nbt, str>, NbtValue);
+    type Item = (Cow<'nbt, str>, NbtNode<'source, 'nbt, NbtValue>);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;
         }
 
+        let tape_item = self.parser.tape_item(self.tape_pos);
         let parse_result = self.parser.parse_at(self.tape_pos);
-        match parse_result.item {
-            Some(item) => {
+        match parse_result.value {
+            value @ Some(_) => {
                 let name = self.parser.get_name_at(self.tape_pos);
                 self.tape_pos = parse_result.next_tape_pos;
-                Some((name, item))
+                Some((
+                    name,
+                    NbtNode {
+                        parser: self.parser,
+                        tape_item: Some(tape_item),
+                        value,
+                    },
+                ))
             }
             None => {
                 self.finished = true;
@@ -67,18 +74,23 @@ impl<'source, 'nbt> Iterator for NbtIterator<'source, 'nbt, NbtCompound> {
 }
 
 impl<'source, 'nbt> Iterator for NbtIterator<'source, 'nbt, NbtList> {
-    type Item = NbtValue;
+    type Item = NbtNode<'source, 'nbt, NbtValue>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;
         }
 
+        let tape_item = self.parser.tape_item(self.tape_pos);
         let parse_result = self.parser.parse_at(self.tape_pos);
-        match parse_result.item {
-            Some(item) => {
+        match parse_result.value {
+            value @ Some(_) => {
                 self.tape_pos = parse_result.next_tape_pos;
-                Some(item)
+                Some(NbtNode {
+                    parser: self.parser,
+                    tape_item: Some(tape_item),
+                    value,
+                })
             }
             None => {
                 self.finished = true;

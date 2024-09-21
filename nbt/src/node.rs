@@ -5,18 +5,49 @@ use std::ops::Deref;
 
 use super::*;
 
-/// **A type-safe, ergonomic NBT value representation.**
-pub struct NbtNode<'source, 'nbt, Value>
+/// An [`NbtNode`] decoupled from its [`NbtParser`]. Call [`NbtNodeRef::bind`] to get an [`NbtNode`].
+///
+/// For when managing lifetimes becomes tricky.
+#[derive(Clone, Copy)]
+pub struct NbtNodeRef<Value>
 where
-    Value: NbtValueOrRef,
+    Value: NbtValueRepr,
 {
-    pub(crate) parser: &'nbt NbtParser<'source>,
-    value: Option<Value>,
+    /// The position of this element in the `Tape`. Might be `None` if not represented on the tape (e.g. the ints in an [`NbtIntArray`]).
+    pub(crate) tape_pos: Option<usize>,
+    /// The value. Is `None` if end tag.
+    pub(crate) value: Option<Value>,
 }
 
-impl<'source, 'nbt, Value> Deref for NbtNode<'source, 'nbt, Value>
+impl<Value> NbtNodeRef<Value>
 where
-    Value: NbtValueOrRef,
+    Value: NbtValueRepr,
+{
+    /// Bind this [`NbtNodeRef`] to a [`NbtParser`].
+    pub fn bind<'source, 'nbt>(
+        &self,
+        parser: &'nbt NbtParser<'source>,
+    ) -> NbtNode<'source, 'nbt, Value> {
+        NbtNode {
+            parser,
+            tape_item: self.tape_pos.map(|tape_pos| parser.tape_item(tape_pos)),
+            value: self.value,
+        }
+    }
+}
+
+impl<Value> Debug for NbtNodeRef<Value>
+where
+    Value: NbtValueRepr,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.value.fmt(f)
+    }
+}
+
+impl<Value> Deref for NbtNodeRef<Value>
+where
+    Value: NbtValueRepr,
 {
     type Target = Option<Value>;
 
@@ -25,9 +56,53 @@ where
     }
 }
 
-impl<'source, 'nbt, Value> Into<Option<Value>> for NbtNode<'source, 'nbt, Value>
+impl<Value> Into<Option<Value>> for NbtNodeRef<Value>
 where
-    Value: NbtValueOrRef,
+    Value: NbtValueRepr,
+{
+    fn into(self) -> Option<Value> {
+        self.value
+    }
+}
+
+/// **A type-safe, ergonomic NBT value representation.**
+///
+/// Allows chaining fallible access operations with extra compile time type safety, and stores parsing information for more ergonomic usage.
+pub struct NbtNode<'source, 'nbt, Value>
+where
+    Value: NbtValueRepr,
+{
+    /// The [`NbtParser`] associated to this node.
+    pub(crate) parser: &'nbt NbtParser<'source>,
+    /// The `TapeItem` that represents this value. Might be `None` if not represented on the tape (e.g. the ints in an [`NbtIntArray`]).
+    pub(crate) tape_item: Option<&'nbt TapeItem>,
+    /// The value. Is `None` if end tag.
+    pub(crate) value: Option<Value>,
+}
+
+impl<Value> Debug for NbtNode<'_, '_, Value>
+where
+    Value: NbtValueRepr,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.value.fmt(f)
+    }
+}
+
+impl<Value> Deref for NbtNode<'_, '_, Value>
+where
+    Value: NbtValueRepr,
+{
+    type Target = Option<Value>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<Value> Into<Option<Value>> for NbtNode<'_, '_, Value>
+where
+    Value: NbtValueRepr,
 {
     fn into(self) -> Option<Value> {
         self.value
@@ -36,17 +111,17 @@ where
 
 impl<'source, 'nbt, Value> NbtNode<'source, 'nbt, Value>
 where
-    Value: NbtValueOrRef,
+    Value: NbtValueRepr,
 {
-    pub fn new(parser: &'nbt NbtParser<'source>, value: Value) -> Self {
-        Self {
-            parser,
-            value: Some(value),
-        }
-    }
-
     pub fn value(&self) -> Option<Value> {
         self.value
+    }
+
+    pub fn is_list_item(&self) -> bool {
+        match self.tape_item {
+            Some(tape_item) => tape_item.is_list_item(),
+            None => false,
+        }
     }
 }
 
@@ -54,7 +129,7 @@ macro_rules! item_getter {
     ($name:ident, $variant:ident, $ret:ty) => {
         pub fn $name(&self, key: impl Borrow<<Container as NbtMapRef>::Key>) -> Option<$ret> {
             self.value
-                .and_then(|v| v.get(self.parser, key.borrow()))
+                .and_then(|v| v.get(self.parser, key.borrow()).value)
                 .and_then(|v| match v {
                     NbtValue::$variant(v) => Some(v),
                     _ => None,
@@ -67,7 +142,7 @@ macro_rules! item_getter_ref {
     ($name:ident, $variant:ident, $ret:ty) => {
         pub fn $name(&self, key: impl Borrow<<Container as NbtMapRef>::Key>) -> Option<$ret> {
             self.value
-                .and_then(|v| v.get(self.parser, key.borrow()))
+                .and_then(|v| v.get(self.parser, key.borrow()).value)
                 .and_then(|v| match v {
                     NbtValue::$variant(v) => Some(v.parse(self.parser)),
                     _ => None,
@@ -82,15 +157,21 @@ macro_rules! node_getter {
             &self,
             key: impl Borrow<<Container as NbtMapRef>::Key>,
         ) -> NbtNode<'source, 'nbt, $ret> {
-            let value = self
+            let (value, tape_item) = match self
                 .value
-                .and_then(|v| v.get(self.parser, key.borrow()))
-                .and_then(|v| match v {
-                    NbtValue::$variant(v) => Some(v),
+                .map(|v| v.get(self.parser, key.borrow()))
+                .and_then(|v| match v.value {
+                    Some(NbtValue::$variant(v_inner)) => Some((v_inner, v.tape_pos)),
                     _ => None,
-                });
+                }) {
+                Some((value, tape_pos)) => {
+                    (Some(value), Some(self.parser.tape_item(tape_pos.unwrap())))
+                }
+                None => (None, None),
+            };
             NbtNode {
                 parser: self.parser,
+                tape_item,
                 value,
             }
         }
@@ -114,8 +195,17 @@ where
     item_getter_ref!(long_array, LongArray, &'nbt [i64]);
     node_getter!(compound, Compound, NbtCompound);
 
-    pub fn item(&self, key: impl Borrow<<Container as NbtMapRef>::Key>) -> Option<NbtValue> {
-        self.value.and_then(|v| v.get(self.parser, key.borrow()))
+    pub fn get(&self, key: impl Borrow<<Container as NbtMapRef>::Key>) -> Option<NbtValue> {
+        self.value
+            .and_then(|container| container.get(self.parser, key.borrow()).value)
+    }
+
+    pub fn get_node(
+        &self,
+        key: impl Borrow<<Container as NbtMapRef>::Key>,
+    ) -> Option<NbtNode<'source, 'nbt, NbtValue>> {
+        self.value
+            .map(|container| container.get(self.parser, key.borrow()).bind(self.parser))
     }
 
     pub fn iter(&self) -> Option<NbtIterator<'source, 'nbt, Container>> {
@@ -145,12 +235,21 @@ impl<'source, 'nbt> NbtNode<'source, 'nbt, NbtValue> {
 
 impl<'source, 'nbt, Array> NbtNode<'source, 'nbt, Array>
 where
-    Array: NbtMapRef<Output<'nbt>: ?NbtRef>,
+    Array: NbtArray,
 {
-    pub fn get(
+    pub fn at(
         &self,
         key: impl Borrow<<Array as NbtMapRef>::Key>,
-    ) -> Option<<Array as NbtMapRef>::Value<'_>> {
-        self.value.and_then(|v| v.get(self.parser, key))
+    ) -> Option<<Array as NbtMapRef>::Value> {
+        self.value
+            .and_then(|array| array.get(self.parser, key).value)
+    }
+
+    pub fn node_at(
+        &self,
+        key: impl Borrow<<Array as NbtMapRef>::Key>,
+    ) -> Option<NbtNode<'source, 'nbt, <Array as NbtMapRef>::Value>> {
+        self.value
+            .map(|array| array.get(self.parser, key).bind(self.parser))
     }
 }

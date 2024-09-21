@@ -39,14 +39,16 @@ pub struct NbtIntArray(pub(crate) usize);
 pub struct NbtLongArray(pub(crate) usize);
 
 /// A reference to a big NBT value.
-pub trait NbtRef: NbtValueOrRef {
-    type Output<'nbt>;
+pub trait NbtRef: NbtValueRepr {
+    type Output<'source, 'nbt>
+    where
+        'source: 'nbt;
 
     /// Gets the position of this value in the `Tape` (internal use).
     fn tape_pos(&self) -> usize;
 
     /// Parses the NBT value, or retrieves it from the cache.
-    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'nbt>
+    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'source, 'nbt>
     where
         'source: 'nbt;
 }
@@ -54,26 +56,20 @@ pub trait NbtRef: NbtValueOrRef {
 /// An NBT associative array (Compound, List, ByteArray, IntArray, LongArray)
 pub trait NbtMapRef: NbtRef {
     type Key: ?Sized; // We only use a reference to Key, so being unsized/DST is OK.
-    type Value<'nbt>: NbtValueOutput;
+    type Value: NbtValueRepr;
 
     /// Gets the [`Value`](Self::Value) associated to this [`Key`](Self::Key).
-    fn get<'source, 'nbt>(
-        &self,
-        nbt: &NbtParser<'source>,
-        key: impl Borrow<Self::Key>,
-    ) -> Option<Self::Value<'nbt>>
-    where
-        'source: 'nbt;
+    fn get(&self, nbt: &NbtParser<'_>, key: impl Borrow<Self::Key>) -> NbtNodeRef<Self::Value>;
 }
 
 impl NbtRef for NbtByteArray {
-    type Output<'nbt> = &'nbt [i8];
+    type Output<'source, 'nbt> = &'nbt [i8] where 'source: 'nbt;
 
     fn tape_pos(&self) -> usize {
         self.0
     }
 
-    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'nbt>
+    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'source, 'nbt>
     where
         'source: 'nbt,
     {
@@ -86,35 +82,34 @@ impl NbtRef for NbtByteArray {
 }
 
 impl NbtMapRef for NbtByteArray {
-    type Value<'nbt> = i8;
+    type Value = i8;
     type Key = usize;
 
-    fn get<'source, 'nbt>(
-        &self,
-        nbt: &NbtParser<'source>,
-        index: impl Borrow<usize>,
-    ) -> Option<Self::Value<'nbt>>
-    where
-        'source: 'nbt,
-    {
+    fn get(&self, nbt: &NbtParser<'_>, index: impl Borrow<usize>) -> NbtNodeRef<Self::Value> {
         let index = *index.borrow();
         let tape_item = &nbt.tape()[self.0];
-        if index >= tape_item.get_data() as usize {
+
+        let value = if index >= tape_item.get_data() as usize {
             None
         } else {
             Some(nbt.source()[tape_item.get_source_payload_pos() + index] as i8)
+        };
+
+        NbtNodeRef {
+            tape_pos: None,
+            value,
         }
     }
 }
 
 impl NbtRef for NbtString {
-    type Output<'nbt> = &'nbt str;
+    type Output<'source, 'nbt> = &'nbt str where 'source: 'nbt;
 
     fn tape_pos(&self) -> usize {
         self.0
     }
 
-    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'nbt>
+    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'source, 'nbt>
     where
         'source: 'nbt,
     {
@@ -132,13 +127,13 @@ impl NbtRef for NbtString {
 }
 
 impl NbtRef for NbtList {
-    type Output<'nbt> = &'nbt [NbtValue];
+    type Output<'source, 'nbt> = &'nbt [NbtNodeRef<NbtValue>] where 'source: 'nbt;
 
     fn tape_pos(&self) -> usize {
         self.0
     }
 
-    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'nbt>
+    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'source, 'nbt>
     where
         'source: 'nbt,
     {
@@ -151,12 +146,15 @@ impl NbtRef for NbtList {
                 let mut tape_pos = self.0 + 1;
                 loop {
                     let NbtParseResult {
-                        item,
+                        value: item,
                         next_tape_pos,
                     } = inner_nbt.parse_at(tape_pos);
                     match item {
-                        Some(item) => {
-                            vec.push(item);
+                        value @ Some(_) => {
+                            vec.push(NbtNodeRef {
+                                tape_pos: Some(tape_pos),
+                                value,
+                            });
                         }
                         None => break,
                     }
@@ -170,37 +168,35 @@ impl NbtRef for NbtList {
 }
 
 impl NbtMapRef for NbtList {
-    type Value<'nbt> = NbtValue;
+    type Value = NbtValue;
     type Key = usize;
 
-    fn get<'source, 'nbt>(
-        &self,
-        nbt: &NbtParser<'source>,
-        index: impl Borrow<usize>,
-    ) -> Option<Self::Value<'nbt>>
-    where
-        'source: 'nbt,
-    {
+    fn get(&self, nbt: &NbtParser<'_>, index: impl Borrow<usize>) -> NbtNodeRef<Self::Value> {
         let index = *index.borrow();
         let tape_item = &nbt.tape()[self.0];
         let list_len = tape_item.get_list_len() as usize;
 
-        if index >= list_len {
+        let value = if index >= list_len {
             None
         } else {
-            nbt.parse_at(self.0 + index).item
+            nbt.parse_at(self.0 + index).value
+        };
+
+        NbtNodeRef {
+            tape_pos: Some(self.0 + index),
+            value,
         }
     }
 }
 
 impl NbtRef for NbtCompound {
-    type Output<'nbt> = &'nbt HashMap<Cow<'nbt, str>, NbtValue>;
+    type Output<'source, 'nbt> = &'nbt HashMap<Cow<'nbt, str>, NbtNodeRef<NbtValue>> where 'source: 'nbt;
 
     fn tape_pos(&self) -> usize {
         self.0
     }
 
-    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'nbt>
+    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'source, 'nbt>
     where
         'source: 'nbt,
     {
@@ -211,12 +207,18 @@ impl NbtRef for NbtCompound {
                 let mut tape_pos = self.0 + 1;
                 loop {
                     let NbtParseResult {
-                        item,
+                        value: item,
                         next_tape_pos,
                     } = inner_nbt.parse_at(tape_pos);
                     match item {
-                        Some(item) => {
-                            map.insert(inner_nbt.get_name_at(tape_pos), item);
+                        value @ Some(_) => {
+                            map.insert(
+                                inner_nbt.get_name_at(tape_pos),
+                                NbtNodeRef {
+                                    tape_pos: Some(tape_pos),
+                                    value,
+                                },
+                            );
                         }
                         None => break,
                     }
@@ -230,31 +232,30 @@ impl NbtRef for NbtCompound {
 }
 
 impl NbtMapRef for NbtCompound {
-    type Value<'nbt> = NbtValue;
+    type Value = NbtValue;
     type Key = str;
 
     /// Gets the first entry in this compound with name `name`.
-    fn get<'source, 'nbt>(
-        &self,
-        nbt: &NbtParser<'source>,
-        name: impl Borrow<str>,
-    ) -> Option<NbtValue>
-    where
-        'source: 'nbt,
-    {
+    fn get(&self, nbt: &NbtParser<'_>, name: impl Borrow<str>) -> NbtNodeRef<Self::Value> {
         let name = name.borrow();
-        self.parse(nbt).get(name).copied()
+        match self.parse(nbt).get(name).copied() {
+            Some(node_ref) => node_ref,
+            None => NbtNodeRef {
+                value: None,
+                tape_pos: None,
+            },
+        }
     }
 }
 
 impl NbtRef for NbtIntArray {
-    type Output<'nbt> = &'nbt [i32];
+    type Output<'source, 'nbt> = &'nbt [i32] where 'source: 'nbt;
 
     fn tape_pos(&self) -> usize {
         self.0
     }
 
-    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'nbt>
+    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'source, 'nbt>
     where
         'source: 'nbt,
     {
@@ -267,21 +268,15 @@ impl NbtRef for NbtIntArray {
 }
 
 impl NbtMapRef for NbtIntArray {
-    type Value<'nbt> = i32;
+    type Value = i32;
     type Key = usize;
 
-    fn get<'source, 'nbt>(
-        &self,
-        nbt: &NbtParser<'source>,
-        index: impl Borrow<usize>,
-    ) -> Option<Self::Value<'nbt>>
-    where
-        'source: 'nbt,
-    {
+    fn get(&self, nbt: &NbtParser<'_>, index: impl Borrow<usize>) -> NbtNodeRef<Self::Value> {
         let index = *index.borrow();
         let tape_item = &nbt.tape()[self.0];
         let source_start_pos = tape_item.get_source_payload_pos();
-        if index >= tape_item.get_data() as usize {
+
+        let value = if index >= tape_item.get_data() as usize {
             None
         } else {
             Some(i32::from_be_bytes(
@@ -289,18 +284,23 @@ impl NbtMapRef for NbtIntArray {
                     .try_into()
                     .unwrap(),
             ))
+        };
+
+        NbtNodeRef {
+            tape_pos: None,
+            value,
         }
     }
 }
 
 impl NbtRef for NbtLongArray {
-    type Output<'nbt> = &'nbt [i64];
+    type Output<'source, 'nbt> = &'nbt [i64] where 'source: 'nbt;
 
     fn tape_pos(&self) -> usize {
         self.0
     }
 
-    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'nbt>
+    fn parse<'source, 'nbt>(&self, nbt: &'nbt NbtParser<'source>) -> Self::Output<'source, 'nbt>
     where
         'source: 'nbt,
     {
@@ -313,21 +313,15 @@ impl NbtRef for NbtLongArray {
 }
 
 impl NbtMapRef for NbtLongArray {
-    type Value<'nbt> = i64;
+    type Value = i64;
     type Key = usize;
 
-    fn get<'source, 'nbt>(
-        &self,
-        nbt: &NbtParser<'source>,
-        index: impl Borrow<usize>,
-    ) -> Option<Self::Value<'nbt>>
-    where
-        'source: 'nbt,
-    {
+    fn get(&self, nbt: &NbtParser<'_>, index: impl Borrow<usize>) -> NbtNodeRef<Self::Value> {
         let index = *index.borrow();
         let tape_item = &nbt.tape()[self.0];
         let source_start_pos = tape_item.get_source_payload_pos();
-        if index >= tape_item.get_data() as usize {
+
+        let value = if index >= tape_item.get_data() as usize {
             None
         } else {
             Some(i64::from_be_bytes(
@@ -335,6 +329,11 @@ impl NbtMapRef for NbtLongArray {
                     .try_into()
                     .unwrap(),
             ))
+        };
+
+        NbtNodeRef {
+            tape_pos: None,
+            value,
         }
     }
 }

@@ -65,7 +65,7 @@ impl<'source> Nbt<'source> {
         };
 
         NbtParseResult {
-            item,
+            value: item,
             next_tape_pos,
         }
     }
@@ -74,8 +74,8 @@ impl<'source> Nbt<'source> {
 /// NBT parsing cache using `OnceMap`.
 struct NbtCache<'nbt> {
     // Needs Box for StableDeref.
-    pub(crate) compounds: OnceMap<usize, Box<HashMap<Cow<'nbt, str>, NbtValue>>>,
-    pub(crate) lists: OnceMap<usize, Vec<NbtValue>>,
+    pub(crate) compounds: OnceMap<usize, Box<HashMap<Cow<'nbt, str>, NbtNodeRef<NbtValue>>>>,
+    pub(crate) lists: OnceMap<usize, Vec<NbtNodeRef<NbtValue>>>,
     pub(crate) strings: OnceMap<usize, Cow<'nbt, str>>,
 }
 
@@ -122,6 +122,10 @@ impl<'source> NbtParser<'source> {
         &self.0.borrow_owner().tape
     }
 
+    pub(crate) fn tape_item(&self, pos: usize) -> &TapeItem {
+        &self.tape().0[pos]
+    }
+
     pub(crate) fn with_cache<'outer_fn, Ret>(
         &'outer_fn self,
         func: impl for<'_q> FnOnce(&'_q Nbt<'source>, &'outer_fn NbtCache<'_q>) -> Ret,
@@ -131,7 +135,11 @@ impl<'source> NbtParser<'source> {
 
     /// Gets an [`NbtNode`] representing the root compound.
     pub fn root<'nbt>(&'nbt self) -> NbtNode<'source, 'nbt, NbtCompound> {
-        NbtNode::new(&self, NbtCompound(0))
+        NbtNode {
+            parser: &self,
+            tape_item: Some(self.tape_item(0)),
+            value: Some(NbtCompound(0)),
+        }
     }
 
     /// Returns an [`NbtIterator`] over the root compound.
@@ -157,7 +165,7 @@ impl<'source> NbtParser<'source> {
 /// This is only ever used internally.
 #[derive(Debug)]
 pub(crate) struct NbtParseResult {
-    pub item: Option<NbtValue>,
+    pub value: Option<NbtValue>,
     pub next_tape_pos: usize,
 }
 
@@ -200,15 +208,11 @@ mod test {
         // TODO: Make this an actual test
         let parser = get_bigtest_parser();
 
-        println!("{:#?}", &parser.tape().0);
-
-        println!("{:?}", parser.root().byte("byte test"));
-
         for (name, item) in parser.root().iter().unwrap() {
             println!("{:?} {:?}", name, item);
         }
 
-        parser.root().list("nested compound test").item(0);
+        dbg!(parser.root().list("nested compound test").get(0));
     }
 
     #[test]
