@@ -1,7 +1,10 @@
 //! **A type-safe, ergonomic NBT value representation.**
 
 use std::borrow::Borrow;
-use std::ops::Deref;
+use std::fmt::Display;
+use std::ops::{ControlFlow, Deref};
+
+use visitor::{NbtPrettyPrinter, NbtVisitor, NbtVisitorStrategy, NbtVisitorStrategySerial};
 
 use super::*;
 
@@ -91,6 +94,10 @@ where
         Some(self.inner?.value)
     }
 
+    pub(crate) fn tape_pos(&self) -> Option<usize> {
+        self.inner?.tape_pos
+    }
+
     pub fn is_list_item(&self) -> bool {
         match self.inner {
             Some(NbtNodeRef {
@@ -98,6 +105,14 @@ where
                 ..
             }) => self.parser.tape_item(tape_pos).is_list_item(),
             _ => false,
+        }
+    }
+
+    pub fn name(&self) -> Option<Cow<'nbt, str>> {
+        if self.is_list_item() {
+            None
+        } else {
+            Some(self.parser.get_name_at(self.tape_pos()?))
         }
     }
 
@@ -209,6 +224,44 @@ where
     pub fn iter(&self) -> Option<NbtIterator<'source, 'nbt, Container>> {
         NbtIterator::from_node(&self)
     }
+
+    /// Visits this [`NbtContainer`] with an [`NbtVisitor`], using an [`NbtVisitorStrategy`].
+    pub fn visit_with_strategy<V, S, R, B, C>(
+        &self,
+        mut visitor: V,
+        mut strategy: S,
+    ) -> Result<R, B>
+    where
+        V: NbtVisitor<B, C, R>,
+        S: NbtVisitorStrategy<V, B, C, R>,
+    {
+        while let Some(flow) = strategy.next(self.parser, &mut visitor) {
+            match flow {
+                ControlFlow::Continue(_) => {}
+                ControlFlow::Break(b) => return Err(b),
+            }
+        }
+        Ok(visitor.result())
+    }
+
+    /// Visits this [`NbtContainer`] with an [`NbtVisitor`], using [`NbtVisitorStrategySerial`].
+    pub fn visit<V, R, B, C>(&self, visitor: V) -> Result<R, B>
+    where
+        V: NbtVisitor<B, C, R>,
+    {
+        let strategy = NbtVisitorStrategySerial::from_container(self.value().unwrap());
+        self.visit_with_strategy(visitor, strategy)
+    }
+}
+
+impl<'source, 'nbt, Container> Display for NbtNode<'source, 'nbt, Container>
+where
+    Container: NbtContainer,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        _ = self.visit(NbtPrettyPrinter::new(f, 4));
+        Ok(())
+    }
 }
 
 macro_rules! value_getter {
@@ -229,6 +282,42 @@ impl<'source, 'nbt> NbtNode<'source, 'nbt, NbtValue> {
     value_getter!(long, Long, i64);
     value_getter!(float, Float, f32);
     value_getter!(double, Double, f64);
+}
+
+impl<'source, 'nbt> Display for NbtNode<'source, 'nbt, NbtValue> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(value) = self.value() {
+            match value {
+                NbtValue::End => write!(f, ""),
+                NbtValue::Byte(value) => write!(f, "{}", value),
+                NbtValue::Short(value) => write!(f, "{}", value),
+                NbtValue::Int(value) => write!(f, "{}", value),
+                NbtValue::Long(value) => write!(f, "{}", value),
+                NbtValue::Float(value) => write!(f, "{}", value),
+                NbtValue::Double(value) => write!(f, "{}", value),
+                NbtValue::ByteArray(byte_array) => {
+                    write!(f, "{:?}", byte_array.parse(self.parser))
+                }
+                NbtValue::String(string) => {
+                    write!(f, "{:?}", string.parse(self.parser))
+                }
+                NbtValue::List(list) => {
+                    write!(f, "{:?}", list.parse(self.parser))
+                }
+                NbtValue::Compound(compound) => {
+                    write!(f, "{:?}", compound.parse(self.parser))
+                }
+                NbtValue::IntArray(int_array) => {
+                    write!(f, "{:?}", int_array.parse(self.parser))
+                }
+                NbtValue::LongArray(long_array) => {
+                    write!(f, "{:?}", long_array.parse(self.parser))
+                }
+            }
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl<'source, 'nbt, Array> NbtNode<'source, 'nbt, Array>

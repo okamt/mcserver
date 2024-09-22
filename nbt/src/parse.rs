@@ -32,9 +32,11 @@ impl TapeItem {
         is_list_item: bool,
         list_data: Option<(Tag, i32)>,
     ) -> Self {
-        let (list_tag, list_len) = list_data
-            .map(|ld| (if is_list_item { 0xFF } else { ld.0.to_u8() }, ld.1))
-            .unwrap_or((0, 0));
+        let (list_tag, list_len) = if is_list_item {
+            (0xFF, -1)
+        } else {
+            list_data.map(|ld| (ld.0.to_u8(), ld.1)).unwrap_or((0, 0))
+        };
 
         Self {
             list_data_tag_and_name_len: ((list_len as u64) << 32)

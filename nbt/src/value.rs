@@ -79,7 +79,7 @@ impl NbtRef for NbtByteArray {
         'source: 'nbt,
     {
         let tape_item = &nbt.tape()[self.0];
-        let source_start_pos = tape_item.get_source_payload_pos();
+        let source_start_pos = tape_item.get_source_payload_pos() + 4;
         let array =
             &nbt.source()[source_start_pos..source_start_pos + (tape_item.get_data() as usize)];
         bytemuck::cast_slice(array)
@@ -103,7 +103,7 @@ impl NbtMapRef for NbtByteArray {
         } else {
             Some(NbtNodeRef {
                 tape_pos: None,
-                value: nbt.source()[tape_item.get_source_payload_pos() + index] as i8,
+                value: nbt.source()[tape_item.get_source_payload_pos() + 4 + index] as i8,
             })
         }
     }
@@ -123,9 +123,9 @@ impl NbtRef for NbtString {
         nbt.with_cache(|inner_nbt, cache| {
             cache.strings.insert(self.0, |_| {
                 let tape_item = &inner_nbt.tape[self.0];
-                let source_start_pos = tape_item.get_source_payload_pos();
+                let source_start_pos = tape_item.get_source_payload_pos() + 2;
                 let len = tape_item.get_data() as usize;
-                simd_cesu8::decode_lossy(
+                simd_cesu8::mutf8::decode_lossy(
                     &inner_nbt.source[source_start_pos..source_start_pos + len],
                 )
             })
@@ -263,7 +263,7 @@ impl NbtRef for NbtIntArray {
         'source: 'nbt,
     {
         let tape_item = &nbt.tape()[self.0];
-        let source_start_pos = tape_item.get_source_payload_pos();
+        let source_start_pos = tape_item.get_source_payload_pos() + 4;
         let array =
             &nbt.source()[source_start_pos..source_start_pos + (4 * tape_item.get_data() as usize)];
         bytemuck::cast_slice(array)
@@ -281,7 +281,7 @@ impl NbtMapRef for NbtIntArray {
     ) -> Option<NbtNodeRef<Self::Value>> {
         let index = *index.borrow();
         let tape_item = &nbt.tape()[self.0];
-        let source_start_pos = tape_item.get_source_payload_pos();
+        let source_start_pos = tape_item.get_source_payload_pos() + 4;
 
         if index >= tape_item.get_data() as usize {
             None
@@ -310,7 +310,7 @@ impl NbtRef for NbtLongArray {
         'source: 'nbt,
     {
         let tape_item = &nbt.tape()[self.0];
-        let source_start_pos = tape_item.get_source_payload_pos();
+        let source_start_pos = tape_item.get_source_payload_pos() + 4;
         let array =
             &nbt.source()[source_start_pos..source_start_pos + (8 * tape_item.get_data() as usize)];
         bytemuck::cast_slice(array)
@@ -328,7 +328,7 @@ impl NbtMapRef for NbtLongArray {
     ) -> Option<NbtNodeRef<Self::Value>> {
         let index = *index.borrow();
         let tape_item = &nbt.tape()[self.0];
-        let source_start_pos = tape_item.get_source_payload_pos();
+        let source_start_pos = tape_item.get_source_payload_pos() + 4;
 
         if index >= tape_item.get_data() as usize {
             None

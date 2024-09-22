@@ -13,5 +13,5 @@ NBT parsing crate.
 - [ ] Write more tests
 - [ ] Ser/de from/into structs
 - [ ] Switch to byteorder maybe
-- [ ] Format NBT
-- [ ] Visitor API
+- [x] Format NBT
+- [x] Visitor API
