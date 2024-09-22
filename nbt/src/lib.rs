@@ -41,31 +41,29 @@ impl<'source> Nbt<'source> {
     pub(crate) fn parse_at(&self, tape_pos: usize) -> NbtParseResult {
         let tape_item = &self.tape[tape_pos];
 
-        let item = (|| {
-            Some(match tape_item.get_tag() {
-                Tag::End => return None,
-                Tag::Byte => NbtValue::Byte(tape_item.get_data() as i8),
-                Tag::Short => NbtValue::Short(tape_item.get_data() as i16),
-                Tag::Int => NbtValue::Int(tape_item.get_data() as i32),
-                Tag::Long => NbtValue::Long(tape_item.get_data() as i64),
-                Tag::Float => NbtValue::Float(f32::from_bits(tape_item.get_data() as u32)),
-                Tag::Double => NbtValue::Double(f64::from_bits(tape_item.get_data())),
-                Tag::ByteArray => NbtValue::ByteArray(NbtByteArray(tape_pos)),
-                Tag::String => NbtValue::String(NbtString(tape_pos)),
-                Tag::List => NbtValue::List(NbtList(tape_pos)),
-                Tag::Compound => NbtValue::Compound(NbtCompound(tape_pos)),
-                Tag::IntArray => NbtValue::IntArray(NbtIntArray(tape_pos)),
-                Tag::LongArray => NbtValue::LongArray(NbtLongArray(tape_pos)),
-            })
-        })();
-        let next_tape_pos = match item.as_ref() {
-            Some(NbtValue::Compound(_) | NbtValue::List(_)) => 1 + tape_item.get_data() as usize,
-            Some(_) => tape_pos + 1,
-            None => 0,
+        let value = match tape_item.get_tag() {
+            Tag::End => NbtValue::End,
+            Tag::Byte => NbtValue::Byte(tape_item.get_data() as i8),
+            Tag::Short => NbtValue::Short(tape_item.get_data() as i16),
+            Tag::Int => NbtValue::Int(tape_item.get_data() as i32),
+            Tag::Long => NbtValue::Long(tape_item.get_data() as i64),
+            Tag::Float => NbtValue::Float(f32::from_bits(tape_item.get_data() as u32)),
+            Tag::Double => NbtValue::Double(f64::from_bits(tape_item.get_data())),
+            Tag::ByteArray => NbtValue::ByteArray(NbtByteArray(tape_pos)),
+            Tag::String => NbtValue::String(NbtString(tape_pos)),
+            Tag::List => NbtValue::List(NbtList(tape_pos)),
+            Tag::Compound => NbtValue::Compound(NbtCompound(tape_pos)),
+            Tag::IntArray => NbtValue::IntArray(NbtIntArray(tape_pos)),
+            Tag::LongArray => NbtValue::LongArray(NbtLongArray(tape_pos)),
+        };
+        let next_tape_pos = match value {
+            NbtValue::Compound(_) | NbtValue::List(_) => 1 + tape_item.get_data() as usize,
+            NbtValue::End => 0,
+            _ => tape_pos + 1,
         };
 
         NbtParseResult {
-            value: item,
+            value,
             next_tape_pos,
         }
     }
@@ -135,11 +133,7 @@ impl<'source> NbtParser<'source> {
 
     /// Gets an [`NbtNode`] representing the root compound.
     pub fn root<'nbt>(&'nbt self) -> NbtNode<'source, 'nbt, NbtCompound> {
-        NbtNode {
-            parser: &self,
-            tape_item: Some(self.tape_item(0)),
-            value: Some(NbtCompound(0)),
-        }
+        NbtNode::new(&self, NbtCompound(0), Some(0))
     }
 
     /// Returns an [`NbtIterator`] over the root compound.
@@ -165,7 +159,7 @@ impl<'source> NbtParser<'source> {
 /// This is only ever used internally.
 #[derive(Debug)]
 pub(crate) struct NbtParseResult {
-    pub value: Option<NbtValue>,
+    pub value: NbtValue,
     pub next_tape_pos: usize,
 }
 

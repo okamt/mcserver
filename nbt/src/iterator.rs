@@ -22,7 +22,7 @@ where
     /// Makes an [`NbtIterator`] over the specified [`NbtNode`].
     pub fn from_node(node: &NbtNode<'source, 'nbt, Container>) -> Option<Self> {
         node.value().map(|value| Self {
-            parser: node.parser,
+            parser: node.parser(),
             tape_pos: value.tape_pos() + 1,
             finished: false,
             _phantom: PhantomData,
@@ -50,24 +50,17 @@ impl<'source, 'nbt> Iterator for NbtIterator<'source, 'nbt, NbtCompound> {
             return None;
         }
 
-        let tape_item = self.parser.tape_item(self.tape_pos);
         let parse_result = self.parser.parse_at(self.tape_pos);
         match parse_result.value {
-            value @ Some(_) => {
-                let name = self.parser.get_name_at(self.tape_pos);
-                self.tape_pos = parse_result.next_tape_pos;
-                Some((
-                    name,
-                    NbtNode {
-                        parser: self.parser,
-                        tape_item: Some(tape_item),
-                        value,
-                    },
-                ))
-            }
-            None => {
+            NbtValue::End => {
                 self.finished = true;
                 None
+            }
+            value => {
+                let name = self.parser.get_name_at(self.tape_pos);
+                let result = Some((name, NbtNode::new(self.parser, value, Some(self.tape_pos))));
+                self.tape_pos = parse_result.next_tape_pos;
+                result
             }
         }
     }
@@ -81,20 +74,16 @@ impl<'source, 'nbt> Iterator for NbtIterator<'source, 'nbt, NbtList> {
             return None;
         }
 
-        let tape_item = self.parser.tape_item(self.tape_pos);
         let parse_result = self.parser.parse_at(self.tape_pos);
         match parse_result.value {
-            value @ Some(_) => {
-                self.tape_pos = parse_result.next_tape_pos;
-                Some(NbtNode {
-                    parser: self.parser,
-                    tape_item: Some(tape_item),
-                    value,
-                })
-            }
-            None => {
+            NbtValue::End => {
                 self.finished = true;
                 None
+            }
+            value => {
+                let result = Some(NbtNode::new(self.parser, value, Some(self.tape_pos)));
+                self.tape_pos = parse_result.next_tape_pos;
+                result
             }
         }
     }
