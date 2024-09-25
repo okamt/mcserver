@@ -162,7 +162,8 @@ fn protocol_derive_inner(input: TokenStream) -> TokenStream {
                 if attr.path().is_ident("repr") {
                     attr.parse_nested_meta(|meta| {
                         if [
-                            "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128",
+                            "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64",
+                            "i128", "isize",
                         ]
                         .iter()
                         .any(|t| meta.path.is_ident(t))
