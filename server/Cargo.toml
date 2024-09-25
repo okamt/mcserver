@@ -12,3 +12,4 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 uuid = { version = "1.10.0", features = ["serde", "v4", "fast-rng"] }
 packet = { path = "../packet" }
 protocol = { path = "../protocol" }
+server-assets = { path = "../server-assets" }
