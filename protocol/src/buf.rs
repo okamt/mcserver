@@ -2,7 +2,7 @@ use bytes::{Buf, BufMut};
 
 use std::{convert::Infallible, io::Read};
 
-use num_traits::{FromPrimitive, ToPrimitive};
+use num_enum::TryFromPrimitive;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -41,12 +41,12 @@ pub enum EncodeError<E> {
 
 #[derive(Error, Debug)]
 pub enum DecodeError<E> {
-    #[error("invalid enum value {0}")]
-    InvalidEnumValue(i32),
     #[error("{0}")]
     Specific(&'static str),
     #[error(transparent)]
     VarInt(#[from] GetVarIntError),
+    #[error(transparent)]
+    Enum(#[from] GetEnumError),
     #[error(transparent)]
     String(#[from] GetStringError),
     #[error(transparent)]
@@ -69,9 +69,9 @@ impl EncodeError<Infallible> {
 impl DecodeError<Infallible> {
     pub fn expand<E>(self) -> DecodeError<E> {
         match self {
-            DecodeError::InvalidEnumValue(e) => DecodeError::InvalidEnumValue(e),
             DecodeError::Specific(e) => DecodeError::Specific(e),
             DecodeError::VarInt(e) => DecodeError::VarInt(e),
+            DecodeError::Enum(e) => DecodeError::Enum(e),
             DecodeError::String(e) => DecodeError::String(e),
             DecodeError::Identifier(e) => DecodeError::Identifier(e),
             DecodeError::Json(e) => DecodeError::Json(e),
@@ -406,10 +406,11 @@ pub fn try_get_varint_with_at_most<B: Buf + ?Sized>(
 
 pub fn get_enum<B: Buf + ?Sized, T>(buf: &mut B) -> Result<T, GetEnumError>
 where
-    T: FromPrimitive,
+    T: TryFromPrimitive<Primitive = i32>,
 {
     let varint = get_varint(buf)?;
-    FromPrimitive::from_i32(varint).ok_or(GetEnumError::InvalidValue(varint))
+    <T as TryFromPrimitive>::try_from_primitive(varint)
+        .map_err(|_| GetEnumError::InvalidValue(varint))
 }
 
 pub fn get_string<B: Buf + ?Sized>(buf: &mut B) -> Result<String, GetStringError> {
@@ -461,8 +462,8 @@ pub fn put_varint<B: BufMut + ?Sized>(buf: &mut B, mut varint: i32) {
     }
 }
 
-pub fn put_enum<B: BufMut + ?Sized>(buf: &mut B, value: &dyn ToPrimitive) {
-    put_varint(buf, value.to_i32().unwrap());
+pub fn put_enum<B: BufMut + ?Sized>(buf: &mut B, value: impl Into<i32>) {
+    put_varint(buf, value.into());
 }
 
 pub fn put_string<B: BufMut + ?Sized>(buf: &mut B, string: &dyn AsRef<str>) {

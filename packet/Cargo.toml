@@ -5,8 +5,6 @@ edition = "2021"
 
 [dependencies]
 bytes = "1.7.1"
-num-derive = { git = "https://github.com/okamt/num-derive" }
-num-traits = "0.2.19"
 protocol = { path = "../protocol" }
 packet-derive = { path = "../packet-derive" }
 protocol-derive = { path = "../protocol-derive" }

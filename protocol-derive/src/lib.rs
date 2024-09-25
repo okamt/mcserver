@@ -179,25 +179,22 @@ fn protocol_derive_inner(input: TokenStream) -> TokenStream {
 
             match type_ident {
                 Some(type_ident) => {
-                    let to_type = format_ident!("to_{}", type_ident);
-                    let from_type = format_ident!("from_{}", type_ident);
-
                     let (encode, decode) = if is_varint {
                         if type_ident != "i32" {
                             abort!(type_ident, "varint enum must be #[repr(i32)]");
                         }
 
                         (
-                            quote! { protocol::buf::put_varint(buf, num_traits::ToPrimitive::to_i32(self).unwrap()); },
-                            quote! { Ok(num_traits::FromPrimitive::from_i32(protocol::buf::get_varint(buf)?).unwrap()) },
+                            quote! { protocol::buf::put_enum(buf, *self); },
+                            quote! { Ok(protocol::buf::get_enum(buf)?) },
                         )
                     } else {
                         let put_type = format_ident!("put_{}", type_ident);
                         let get_type = format_ident!("get_{}", type_ident);
 
                         (
-                            quote! { buf.#put_type(num_traits::ToPrimitive::#to_type(self).unwrap()); },
-                            quote! { Ok(num_traits::FromPrimitive::#from_type(buf.#get_type()).unwrap()) },
+                            quote! { buf.#put_type((*self).into()); },
+                            quote! { Ok(Self::try_from(buf.#get_type())?) },
                         )
                     };
 

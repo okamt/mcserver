@@ -67,7 +67,7 @@ macro_rules! packets {
             }
         )*
 
-        #[derive(Debug, Clone, Eq, PartialEq, num_derive::ToPrimitive, derive_more::From, packet_derive::Packet)]
+        #[derive(Debug, Clone, Eq, PartialEq, derive_more::From, packet_derive::Packet)]
         #[repr(i32)]
         pub enum $enum_name {
             $(

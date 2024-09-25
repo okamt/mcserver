@@ -2,7 +2,7 @@ use std::convert::Infallible;
 
 use bitflags::bitflags;
 use getset::Getters;
-use num_derive::{FromPrimitive, ToPrimitive};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use protocol_derive::Protocol;
 
 pub mod buf;
@@ -12,7 +12,7 @@ pub use buf::{Decodable, DecodeError, Encodable, EncodeError};
 
 use crate as protocol;
 
-#[derive(Debug, Eq, PartialEq, Clone, Copy, FromPrimitive, ToPrimitive, Protocol)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy, TryFromPrimitive, IntoPrimitive, Protocol)]
 #[repr(i32)]
 #[protocol(varint)]
 pub enum ConnectionState {
@@ -23,7 +23,7 @@ pub enum ConnectionState {
     Play = 4,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive, Protocol)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Protocol)]
 #[repr(i32)]
 #[protocol(varint)]
 pub enum ChatMode {
@@ -32,7 +32,7 @@ pub enum ChatMode {
     Hidden = 2,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive, Protocol)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromPrimitive, IntoPrimitive, Protocol)]
 #[repr(i32)]
 #[protocol(varint)]
 pub enum Hand {
