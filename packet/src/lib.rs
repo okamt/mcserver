@@ -2,6 +2,7 @@ use std::convert::Infallible;
 
 use bytes::Buf;
 use client::ClientPacket;
+use delegate_display::DelegateDebug;
 use derive_more::derive::From;
 use packet_derive::Packet;
 use protocol::{
@@ -18,7 +19,7 @@ pub trait Packet: Encodable<Context = (), Error = Infallible> + Decodable {
     fn get_id(&self) -> i32;
 }
 
-#[derive(From)]
+#[derive(From, DelegateDebug)]
 pub enum AnyPacket<'a> {
     Client(ClientPacket<'a>),
     Server(ServerPacket<'a>),
@@ -127,7 +128,7 @@ macro_rules! packets {
             }
         )*
 
-        #[derive(Debug, Clone, Eq, PartialEq, derive_more::From, packet_derive::Packet)]
+        #[derive(DelegateDebug, Clone, Eq, PartialEq, derive_more::From, packet_derive::Packet)]
         #[repr(i32)]
         pub enum $enum_name $(<$($enum_gen),*>)? {
             $(

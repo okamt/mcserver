@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::convert::Infallible;
 
 use bytes::{Buf, BufMut};
+use delegate_display::DelegateDebug;
 use derive_more::derive::From;
 use protocol::buf::ArrayProtocolContext;
 use protocol::{
@@ -100,7 +101,7 @@ packets! {
     None1 {} = 0x00
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, From)]
+#[derive(DelegateDebug, Clone, Eq, PartialEq, From)]
 pub enum ServerPacket<'a> {
     Handshaking(ServerHandshakingPacket<'a>),
     Status(ServerStatusPacket),
