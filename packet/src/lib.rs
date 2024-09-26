@@ -1,10 +1,14 @@
 use std::convert::Infallible;
 
 use bytes::Buf;
+use client::ClientPacket;
+use derive_more::derive::From;
+use packet_derive::Packet;
 use protocol::{
     buf::{self},
     ConnectionState, Decodable, DecodeError, Encodable,
 };
+use server::ServerPacket;
 use thiserror::Error;
 
 pub mod client;
@@ -14,10 +18,63 @@ pub trait Packet: Encodable<Context = (), Error = Infallible> + Decodable {
     fn get_id(&self) -> i32;
 }
 
+#[derive(From)]
+pub enum AnyPacket {
+    Client(ClientPacket),
+    Server(ServerPacket),
+}
+
+impl Encodable for AnyPacket {
+    type Context = ();
+    type Error = Infallible;
+
+    fn encode(
+        &self,
+        buf: &mut dyn bytes::BufMut,
+        ctx: Self::Context,
+    ) -> Result<(), buf::EncodeError<Self::Error>> {
+        match self {
+            AnyPacket::Client(packet) => packet.encode(buf, ctx),
+            AnyPacket::Server(packet) => packet.encode(buf, ctx),
+        }
+    }
+}
+
+impl Decodable for AnyPacket {
+    type Context = PacketDecodeContext;
+    type Error = PacketDecodeError;
+
+    fn decode(buf: &mut dyn Buf, ctx: Self::Context) -> Result<Self, DecodeError<Self::Error>>
+    where
+        Self: Sized,
+    {
+        Ok(match ctx.direction {
+            PacketDirection::Client => Self::Client(ClientPacket::decode(buf, ctx)?),
+            PacketDirection::Server => Self::Server(ServerPacket::decode(buf, ctx)?),
+        })
+    }
+}
+
+impl Packet for AnyPacket {
+    fn get_id(&self) -> i32 {
+        match self {
+            AnyPacket::Client(packet) => packet.get_id(),
+            AnyPacket::Server(packet) => packet.get_id(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PacketDecodeContext {
     pub connection_state: ConnectionState,
     pub packet_id: i32,
+    pub direction: PacketDirection,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum PacketDirection {
+    Client,
+    Server,
 }
 
 #[derive(Debug, Error)]
