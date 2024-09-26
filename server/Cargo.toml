@@ -13,3 +13,5 @@ uuid = { version = "1.10.0", features = ["serde", "v4", "fast-rng"] }
 packet = { path = "../packet" }
 protocol = { path = "../protocol" }
 server-assets = { path = "../server-assets" }
+futures = "0.3.30"
+anyhow = "1.0.89"

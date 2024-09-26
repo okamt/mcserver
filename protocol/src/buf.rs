@@ -1,6 +1,6 @@
 use bytes::{Buf, BufMut};
 
-use std::{convert::Infallible, io::Read};
+use std::{borrow::Cow, convert::Infallible, io::Read};
 
 use num_enum::TryFromPrimitive;
 use thiserror::Error;
@@ -170,7 +170,34 @@ impl Decodable for bool {
     }
 }
 
-impl Encodable for String {
+impl<'a> Encodable for Cow<'a, str> {
+    type Context = ();
+    type Error = Infallible;
+
+    fn encode(
+        &self,
+        buf: &mut dyn BufMut,
+        _ctx: Self::Context,
+    ) -> Result<(), EncodeError<Self::Error>> {
+        put_string(buf, self);
+        Ok(())
+    }
+}
+
+impl<'a> Decodable for Cow<'a, str> {
+    type Context = ();
+    type Error = Infallible;
+
+    fn decode(buf: &mut dyn Buf, _ctx: Self::Context) -> Result<Self, DecodeError<Self::Error>>
+    where
+        Self: Sized,
+    {
+        Ok(get_string(buf)?.into())
+    }
+}
+
+// Temporarily disabled to make sure we use Cow<str> instead.
+/*impl Encodable for String {
     type Context = ();
     type Error = Infallible;
 
@@ -194,7 +221,7 @@ impl Decodable for String {
     {
         Ok(get_string(buf)?)
     }
-}
+}*/
 
 impl Encodable for Uuid {
     type Context = ();
@@ -248,8 +275,9 @@ impl Decodable for Identifier {
     }
 }
 
-impl<T: Encodable<Context = ()>> Encodable for Vec<T> {
-    type Context = VecProtocolContext;
+// Temporarily disabled to make sure we use Cow<[T]> instead.
+/*impl<T: Encodable<Context = ()>> Encodable for Vec<T> {
+    type Context = ArrayProtocolContext;
     type Error = <T as Encodable>::Error;
 
     fn encode(
@@ -258,9 +286,9 @@ impl<T: Encodable<Context = ()>> Encodable for Vec<T> {
         ctx: Self::Context,
     ) -> Result<(), EncodeError<<T as Encodable>::Error>> {
         match ctx {
-            VecProtocolContext::LengthPrefixed => put_varint(buf, self.len().try_into().unwrap()),
-            VecProtocolContext::Remaining => {}
-            VecProtocolContext::FixedLength(_) => {}
+            ArrayProtocolContext::LengthPrefixed => put_varint(buf, self.len().try_into().unwrap()),
+            ArrayProtocolContext::Remaining => {}
+            ArrayProtocolContext::FixedLength(_) => {}
         }
         for item in self {
             item.encode(buf, ())?;
@@ -270,7 +298,7 @@ impl<T: Encodable<Context = ()>> Encodable for Vec<T> {
 }
 
 impl<T: Decodable<Context = ()>> Decodable for Vec<T> {
-    type Context = VecProtocolContext;
+    type Context = ArrayProtocolContext;
     type Error = <T as Decodable>::Error;
 
     fn decode(buf: &mut dyn Buf, ctx: Self::Context) -> Result<Self, DecodeError<Self::Error>>
@@ -278,9 +306,9 @@ impl<T: Decodable<Context = ()>> Decodable for Vec<T> {
         Self: Sized,
     {
         let len = match ctx {
-            VecProtocolContext::Remaining => buf.remaining(),
-            VecProtocolContext::LengthPrefixed => get_varint(buf)?.try_into().unwrap(),
-            VecProtocolContext::FixedLength(len) => len,
+            ArrayProtocolContext::Remaining => buf.remaining(),
+            ArrayProtocolContext::LengthPrefixed => get_varint(buf)?.try_into().unwrap(),
+            ArrayProtocolContext::FixedLength(len) => len,
         };
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
@@ -288,10 +316,59 @@ impl<T: Decodable<Context = ()>> Decodable for Vec<T> {
         }
         Ok(vec)
     }
+}*/
+
+impl<'a, T: Encodable<Context = ()>> Encodable for Cow<'a, [T]>
+where
+    [T]: ToOwned,
+{
+    type Context = ArrayProtocolContext;
+    type Error = <T as Encodable>::Error;
+
+    fn encode(
+        &self,
+        buf: &mut dyn BufMut,
+        ctx: Self::Context,
+    ) -> Result<(), EncodeError<Self::Error>> {
+        match ctx {
+            ArrayProtocolContext::LengthPrefixed => put_varint(buf, self.len().try_into().unwrap()),
+            ArrayProtocolContext::Remaining => {}
+            ArrayProtocolContext::FixedLength(_) => {}
+        }
+        for item in self.iter() {
+            item.encode(buf, ())?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a, T: Decodable<Context = ()>> Decodable for Cow<'a, [T]>
+where
+    [T]: ToOwned,
+    <[T] as ToOwned>::Owned: From<Vec<T>>, // <[T] as ToOwned>::Owned can only ever be Vec<T> (https://github.com/rust-lang/rust/issues/20041)
+{
+    type Context = ArrayProtocolContext;
+    type Error = <T as Decodable>::Error;
+
+    fn decode(buf: &mut dyn Buf, ctx: Self::Context) -> Result<Self, DecodeError<Self::Error>>
+    where
+        Self: Sized,
+    {
+        let len = match ctx {
+            ArrayProtocolContext::Remaining => buf.remaining(),
+            ArrayProtocolContext::LengthPrefixed => get_varint(buf)?.try_into().unwrap(),
+            ArrayProtocolContext::FixedLength(len) => len,
+        };
+        let mut vec = Vec::with_capacity(len);
+        for _ in 0..len {
+            vec.push(<T as Decodable>::decode(buf, ())?);
+        }
+        Ok(Cow::Owned(vec.into()))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VecProtocolContext {
+pub enum ArrayProtocolContext {
     /// Vec length is based on the remaining byte count.
     Remaining,
     /// Vec is prefixed by a VarInt length value.

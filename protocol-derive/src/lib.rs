@@ -21,6 +21,11 @@ fn protocol_derive_inner(input: TokenStream) -> TokenStream {
         // If is a struct, encode/decode all fields
         Item::Struct(protocol_struct) => {
             let protocol_struct_ident = &protocol_struct.ident;
+            let (
+                protocol_struct_impl_generics,
+                protocol_struct_type_generics,
+                protocol_struct_where_clause,
+            ) = protocol_struct.generics.split_for_impl();
 
             let mut encode_stmts: Vec<Stmt> = Vec::with_capacity(protocol_struct.fields.len());
             let mut decode_stmts: Vec<Stmt> = Vec::with_capacity(protocol_struct.fields.len());
@@ -102,7 +107,7 @@ fn protocol_derive_inner(input: TokenStream) -> TokenStream {
             }
 
             let out = quote! {
-                impl protocol::Encodable for #protocol_struct_ident {
+                impl #protocol_struct_impl_generics protocol::Encodable for #protocol_struct_ident #protocol_struct_type_generics #protocol_struct_where_clause {
                     type Context = ();
                     type Error = core::convert::Infallible;
 
@@ -113,7 +118,7 @@ fn protocol_derive_inner(input: TokenStream) -> TokenStream {
                     }
                 }
 
-                impl protocol::Decodable for #protocol_struct_ident {
+                impl #protocol_struct_impl_generics protocol::Decodable for #protocol_struct_ident #protocol_struct_type_generics #protocol_struct_where_clause {
                     type Context = ();
                     type Error = core::convert::Infallible;
 
@@ -129,8 +134,15 @@ fn protocol_derive_inner(input: TokenStream) -> TokenStream {
             let ItemEnum {
                 attrs: ref protocol_enum_attrs,
                 ident: ref protocol_enum_ident,
+                generics: ref protocol_enum_generics,
                 ..
             } = protocol_enum;
+
+            let (
+                protocol_enum_impl_generics,
+                protocol_enum_type_generics,
+                protocol_enum_where_clause,
+            ) = protocol_enum_generics.split_for_impl();
 
             let mut is_varint = false;
 
@@ -199,7 +211,7 @@ fn protocol_derive_inner(input: TokenStream) -> TokenStream {
                     };
 
                     quote! {
-                        impl protocol::Encodable for #protocol_enum_ident {
+                        impl #protocol_enum_impl_generics protocol::Encodable for #protocol_enum_ident #protocol_enum_type_generics #protocol_enum_where_clause {
                             type Context = ();
                             type Error = core::convert::Infallible;
 
@@ -210,7 +222,7 @@ fn protocol_derive_inner(input: TokenStream) -> TokenStream {
                             }
                         }
 
-                        impl protocol::Decodable for #protocol_enum_ident {
+                        impl #protocol_enum_impl_generics protocol::Decodable for #protocol_enum_ident #protocol_enum_type_generics #protocol_enum_where_clause {
                             type Context = ();
                             type Error = core::convert::Infallible;
 

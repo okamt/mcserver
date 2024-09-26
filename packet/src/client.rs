@@ -6,12 +6,13 @@ use crate::{Packet, PacketDecodeContext, PacketDecodeError};
 use bytes::{Buf, BufMut};
 use derive_more::derive::From;
 use protocol::{
-    buf::{OptionProtocolContext, VecProtocolContext},
+    buf::{ArrayProtocolContext, OptionProtocolContext},
     identifier::Identifier,
     Decodable, DecodeError, Encodable, EncodeError,
 };
 use protocol_derive::Protocol;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use uuid::Uuid;
 
 use protocol::ConnectionState;
@@ -30,34 +31,34 @@ packets! {
 }
 
 packets! {
-    ClientLoginPacket
+    ClientLoginPacket<'a>
 
     LoginDisconnectPacket {} = 0x00
-    EncryptionRequestPacket {
-        server_id: String,
-        #[protocol(ctx = VecProtocolContext::LengthPrefixed)]
-        public_key: Vec<u8>,
-        #[protocol(ctx = VecProtocolContext::LengthPrefixed)]
-        verify_token: Vec<u8>,
+    EncryptionRequestPacket<'a> {
+        server_id: Cow<'a, str>,
+        #[protocol(ctx = ArrayProtocolContext::LengthPrefixed)]
+        public_key: Cow<'a, [u8]>,
+        #[protocol(ctx = ArrayProtocolContext::LengthPrefixed)]
+        verify_token: Cow<'a, [u8]>,
         should_authenticate: bool,
     } = 0x01
-    LoginSuccessPacket {
+    LoginSuccessPacket<'a> {
         player_uuid: Uuid,
-        player_username: String,
-        #[protocol(ctx = VecProtocolContext::LengthPrefixed)]
-        properties: Vec<ClientLoginSuccessProperty>,
+        player_username: Cow<'a, str>,
+        #[protocol(ctx = ArrayProtocolContext::LengthPrefixed)]
+        properties: Cow<'a, [ClientLoginSuccessProperty<'a>]>,
         strict_error_handling: bool,
     } = 0x02
     SetCompressionPacket {
         #[protocol(varint)]
         packet_size_threshold: i32,
     } = 0x03
-    LoginPluginRequestPacket {
+    LoginPluginRequestPacket<'a> {
         #[protocol(varint)]
         message_id: i32,
         channel: Identifier,
-        #[protocol(ctx = VecProtocolContext::Remaining)]
-        data: Vec<u8>,
+        #[protocol(ctx = ArrayProtocolContext::Remaining)]
+        data: Cow<'a, [u8]>,
     } = 0x04
     LoginCookieRequestPacket {
         key: Identifier,
@@ -65,23 +66,23 @@ packets! {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Protocol)]
-pub struct ClientLoginSuccessProperty {
-    name: String,
-    value: String,
+pub struct ClientLoginSuccessProperty<'a> {
+    name: Cow<'a, str>,
+    value: Cow<'a, str>,
     #[protocol(ctx = OptionProtocolContext::BoolPrefixed)]
-    signature: Option<String>,
+    signature: Option<Cow<'a, str>>,
 }
 
 packets! {
-    ClientConfigurationPacket
+    ClientConfigurationPacket<'a>
 
     ConfigurationCookieRequestPacket {
         key: Identifier,
     } = 0x00
-    ConfigurationClientboundPluginMessage {
+    ConfigurationClientboundPluginMessage<'a> {
         channel: Identifier,
-        #[protocol(ctx = VecProtocolContext::Remaining)]
-        data: Vec<u8>,
+        #[protocol(ctx = ArrayProtocolContext::Remaining)]
+        data: Cow<'a, [u8]>,
     } = 0x01
     ConfigurationDisconnect {
 
@@ -95,14 +96,14 @@ packets! {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, From)]
-pub enum ClientPacket {
+pub enum ClientPacket<'a> {
     Status(ClientStatusPacket),
-    Login(ClientLoginPacket),
-    Configuration(ClientConfigurationPacket),
+    Login(ClientLoginPacket<'a>),
+    Configuration(ClientConfigurationPacket<'a>),
     Play(ClientPlayPacket),
 }
 
-impl Encodable for ClientPacket {
+impl<'a> Encodable for ClientPacket<'a> {
     type Context = ();
     type Error = Infallible;
 
@@ -120,7 +121,7 @@ impl Encodable for ClientPacket {
     }
 }
 
-impl Decodable for ClientPacket {
+impl<'a> Decodable for ClientPacket<'a> {
     type Context = PacketDecodeContext;
     type Error = PacketDecodeError;
 
@@ -144,7 +145,7 @@ impl Decodable for ClientPacket {
     }
 }
 
-impl Packet for ClientPacket {
+impl<'a> Packet for ClientPacket<'a> {
     fn get_id(&self) -> i32 {
         match self {
             Self::Status(packet) => packet.get_id(),

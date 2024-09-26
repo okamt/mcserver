@@ -19,12 +19,12 @@ pub trait Packet: Encodable<Context = (), Error = Infallible> + Decodable {
 }
 
 #[derive(From)]
-pub enum AnyPacket {
-    Client(ClientPacket),
-    Server(ServerPacket),
+pub enum AnyPacket<'a> {
+    Client(ClientPacket<'a>),
+    Server(ServerPacket<'a>),
 }
 
-impl Encodable for AnyPacket {
+impl<'a> Encodable for AnyPacket<'a> {
     type Context = ();
     type Error = Infallible;
 
@@ -40,7 +40,7 @@ impl Encodable for AnyPacket {
     }
 }
 
-impl Decodable for AnyPacket {
+impl<'a> Decodable for AnyPacket<'a> {
     type Context = PacketDecodeContext;
     type Error = PacketDecodeError;
 
@@ -55,7 +55,7 @@ impl Decodable for AnyPacket {
     }
 }
 
-impl Packet for AnyPacket {
+impl<'a> Packet for AnyPacket<'a> {
     fn get_id(&self) -> i32 {
         match self {
             AnyPacket::Client(packet) => packet.get_id(),
@@ -110,14 +110,17 @@ pub enum PacketCheckOutcome {
 
 #[macro_export]
 macro_rules! packets {
-    ( $enum_name:ident $($name:ident { $($(#[$meta:meta])? $field:ident : $ftype:ty),* $(,)? } = $discrim:expr)* ) => {
+    (
+        $enum_name:ident $(<$($enum_gen:lifetime),*>)?
+        $($name:ident $(<$($gen:lifetime),*>)? { $($(#[$meta:meta])? $field:ident : $ftype:ty),* $(,)? } = $discrim:expr)*
+    ) => {
         $(
             #[derive(Debug, Clone, Eq, PartialEq, protocol_derive::Protocol)]
-            pub struct $name {
+            pub struct $name $(<$($gen),*>)? {
                 $($(#[$meta])? pub $field: $ftype),*
             }
 
-            impl packet::Packet for $name {
+            impl $(<$($gen),*>)? packet::Packet for $name $(<$($gen),*>)? {
                 fn get_id(&self) -> i32 {
                     $discrim
                 }
@@ -126,9 +129,9 @@ macro_rules! packets {
 
         #[derive(Debug, Clone, Eq, PartialEq, derive_more::From, packet_derive::Packet)]
         #[repr(i32)]
-        pub enum $enum_name {
+        pub enum $enum_name $(<$($enum_gen),*>)? {
             $(
-                $name($name) = $discrim,
+                $name($name $(<$($gen),*>)? ) = $discrim,
             )*
         }
     };

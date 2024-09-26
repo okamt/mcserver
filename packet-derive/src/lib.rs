@@ -18,6 +18,8 @@ fn packet_derive_inner_new(input: TokenStream) -> TokenStream {
     match item {
         Item::Enum(packet_enum) => {
             let packet_enum_ident = &packet_enum.ident;
+            let (packet_enum_impl_generics, packet_enum_type_generics, packet_enum_where_clause) =
+                packet_enum.generics.split_for_impl();
             let packet_enum_variants = packet_enum
                 .variants
                 .iter()
@@ -30,7 +32,7 @@ fn packet_derive_inner_new(input: TokenStream) -> TokenStream {
                 .collect::<Vec<_>>();
 
             quote! {
-                impl protocol::Encodable for #packet_enum_ident {
+                impl #packet_enum_impl_generics protocol::Encodable for #packet_enum_ident #packet_enum_type_generics #packet_enum_where_clause {
                     type Context = ();
                     type Error = core::convert::Infallible;
 
@@ -45,7 +47,7 @@ fn packet_derive_inner_new(input: TokenStream) -> TokenStream {
                     }
                 }
 
-                impl protocol::Decodable for #packet_enum_ident {
+                impl #packet_enum_impl_generics protocol::Decodable for #packet_enum_ident #packet_enum_type_generics #packet_enum_where_clause {
                     type Context = packet::PacketDecodeContext;
                     type Error = packet::PacketDecodeError;
 
@@ -60,7 +62,7 @@ fn packet_derive_inner_new(input: TokenStream) -> TokenStream {
                     }
                 }
 
-                impl packet::Packet for #packet_enum_ident {
+                impl #packet_enum_impl_generics packet::Packet for #packet_enum_ident #packet_enum_type_generics #packet_enum_where_clause {
                     fn get_id(&self) -> i32 {
                         match self {
                             #(Self::#packet_enum_variants(packet) => packet.get_id(),)*

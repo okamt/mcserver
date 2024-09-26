@@ -1,10 +1,11 @@
 //! Serverbound packets.
 
+use std::borrow::Cow;
 use std::convert::Infallible;
 
 use bytes::{Buf, BufMut};
 use derive_more::derive::From;
-use protocol::buf::VecProtocolContext;
+use protocol::buf::ArrayProtocolContext;
 use protocol::{
     identifier::Identifier, ChatMode, ConnectionState, Decodable, DisplayedSkinParts, Encodable,
     Hand,
@@ -17,12 +18,12 @@ use crate::{packets, Packet, PacketDecodeContext, PacketDecodeError};
 use crate as packet;
 
 packets! {
-    ServerHandshakingPacket
+    ServerHandshakingPacket<'a>
 
-    HandshakePacket {
+    HandshakePacket<'a> {
         #[protocol(varint)]
         protocol_version: i32,
-        server_address: String,
+        server_address: Cow<'a, str>,
         server_port: u16,
         next_state: ConnectionState,
     } = 0x00
@@ -36,33 +37,33 @@ packets! {
 }
 
 packets! {
-    ServerLoginPacket
+    ServerLoginPacket<'a>
 
-    LoginStartPacket {
-        player_username: String,
+    LoginStartPacket<'a> {
+        player_username: Cow<'a, str>,
         player_uuid: Uuid,
     } = 0x00
-    EncryptionResponsePacket {
-        #[protocol(ctx = VecProtocolContext::LengthPrefixed)]
-        shared_secret: Vec<u8>,
-        #[protocol(ctx = VecProtocolContext::LengthPrefixed)]
-        verify_token: Vec<u8>,
+    EncryptionResponsePacket<'a> {
+        #[protocol(ctx = ArrayProtocolContext::LengthPrefixed)]
+        shared_secret: Cow<'a, [u8]>,
+        #[protocol(ctx = ArrayProtocolContext::LengthPrefixed)]
+        verify_token: Cow<'a, [u8]>,
     } = 0x01
-    LoginPluginResponsePacket {
+    LoginPluginResponsePacket<'a> {
         #[protocol(varint)]
         message_id: i32,
         successful: bool,
-        #[protocol(ctx = VecProtocolContext::Remaining)]
-        data: Vec<u8>,
+        #[protocol(ctx = ArrayProtocolContext::Remaining)]
+        data: Cow<'a, [u8]>,
     } = 0x02
     LoginAcknowledgedPacket {} = 0x03
 }
 
 packets! {
-    ServerConfigurationPacket
+    ServerConfigurationPacket<'a>
 
-    ClientInformationPacket {
-        locale: String,
+    ClientInformationPacket<'a> {
+        locale: Cow<'a, str>,
         view_distance: u8,
         chat_mode: ChatMode,
         chat_colors: bool,
@@ -71,17 +72,17 @@ packets! {
         enable_text_filtering: bool,
         allow_server_listings: bool,
     } = 0x00
-    ServerboundPluginMessagePacket {
+    ServerboundPluginMessagePacket<'a> {
         channel_identifier: Identifier,
-        #[protocol(ctx = VecProtocolContext::Remaining)]
-        data: Vec<u8>,
+        #[protocol(ctx = ArrayProtocolContext::Remaining)]
+        data: Cow<'a, [u8]>,
     } = 0x02
 }
 
-impl Into<ClientInformation> for ClientInformationPacket {
+impl<'a> Into<ClientInformation> for ClientInformationPacket<'a> {
     fn into(self) -> ClientInformation {
         ClientInformation {
-            locale: self.locale,
+            locale: self.locale.to_string(),
             view_distance: self.view_distance,
             chat_mode: self.chat_mode,
             chat_colors: self.chat_colors,
@@ -100,15 +101,15 @@ packets! {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, From)]
-pub enum ServerPacket {
-    Handshaking(ServerHandshakingPacket),
+pub enum ServerPacket<'a> {
+    Handshaking(ServerHandshakingPacket<'a>),
     Status(ServerStatusPacket),
-    Login(ServerLoginPacket),
-    Configuration(ServerConfigurationPacket),
+    Login(ServerLoginPacket<'a>),
+    Configuration(ServerConfigurationPacket<'a>),
     Play(ServerPlayPacket),
 }
 
-impl Encodable for ServerPacket {
+impl<'a> Encodable for ServerPacket<'a> {
     type Context = ();
     type Error = Infallible;
 
@@ -127,7 +128,7 @@ impl Encodable for ServerPacket {
     }
 }
 
-impl Decodable for ServerPacket {
+impl<'a> Decodable for ServerPacket<'a> {
     type Context = PacketDecodeContext;
     type Error = PacketDecodeError;
 
@@ -149,7 +150,7 @@ impl Decodable for ServerPacket {
     }
 }
 
-impl Packet for ServerPacket {
+impl<'a> Packet for ServerPacket<'a> {
     fn get_id(&self) -> i32 {
         match self {
             Self::Handshaking(packet) => packet.get_id(),

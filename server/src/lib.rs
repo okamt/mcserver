@@ -2,6 +2,7 @@ use connection::ConnectionManager;
 use tokio::net::ToSocketAddrs;
 
 pub mod connection;
+pub mod packet_handler;
 
 pub struct MinecraftServer {
     connection_manager: ConnectionManager,
