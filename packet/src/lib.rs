@@ -1,4 +1,4 @@
-use std::convert::Infallible;
+use std::{borrow::Cow, convert::Infallible};
 
 use bytes::Buf;
 use client::ClientPacket;
@@ -6,9 +6,11 @@ use delegate_display::DelegateDebug;
 use derive_more::derive::From;
 use packet_derive::Packet;
 use protocol::{
-    buf::{self},
+    buf::{self, IdentifierProtocolContext},
+    identifier::Identifier,
     ConnectionState, Decodable, DecodeError, Encodable,
 };
+use protocol_derive::Protocol;
 use server::ServerPacket;
 use thiserror::Error;
 
@@ -136,4 +138,11 @@ macro_rules! packets {
             )*
         }
     };
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Protocol)]
+pub struct KnownPack<'a> {
+    #[protocol(ctx = IdentifierProtocolContext::DoubleString)]
+    pub identifier: Identifier<'a>,
+    pub version: Cow<'a, str>,
 }

@@ -6,8 +6,8 @@ use std::{
 };
 
 use futures::future::BoxFuture;
-use packet::{client::*, server::*, Packet};
-use protocol::{ConnectionState, EncodeError};
+use packet::{client::*, server::*, KnownPack, Packet};
+use protocol::{identifier::Identifier, ConnectionState, EncodeError};
 use thiserror::Error;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -224,7 +224,18 @@ pub async fn default_packet_handler(
             }
             ServerLoginPacket::LoginAcknowledgedPacket(LoginAcknowledgedPacket {}) => {
                 tracing::trace!("Login was acknowledged by the client.");
+
                 connection.state = ConnectionState::Configuration;
+
+                connection
+                    .send_packet(&ClientboundKnownPacksPacket {
+                        known_packs: (&[KnownPack {
+                            identifier: Identifier::from_string("core").unwrap(),
+                            version: "1.21".into(),
+                        }])
+                            .into(),
+                    })
+                    .await?;
             }
             _ => todo!(),
         },
@@ -245,6 +256,9 @@ pub async fn default_packet_handler(
             }
             ServerConfigurationPacket::ClientInformationPacket(packet) => {
                 connection.client_information = Some(packet.clone().into());
+            }
+            ServerConfigurationPacket::ServerboundKnownPacksPacket(_packet) => {
+                // TODO
             }
         },
         ServerPacket::Play(_) => todo!(),

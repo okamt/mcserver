@@ -14,7 +14,7 @@ use protocol::{
 use protocol::{ClientInformation, DecodeError, EncodeError};
 use uuid::Uuid;
 
-use crate::{packets, Packet, PacketDecodeContext, PacketDecodeError};
+use crate::{packets, KnownPack, Packet, PacketDecodeContext, PacketDecodeError};
 
 use crate as packet;
 
@@ -79,6 +79,10 @@ packets! {
         #[protocol(ctx = ArrayProtocolContext::Remaining)]
         data: Cow<'a, [u8]>,
     } = 0x02
+    ServerboundKnownPacksPacket<'a> {
+        #[protocol(ctx = ArrayProtocolContext::LengthPrefixed)]
+        known_packs: Cow<'a, [KnownPack<'a>]>,
+    } = 0x07
 }
 
 impl<'a> Into<ClientInformation> for ClientInformationPacket<'a> {

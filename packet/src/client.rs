@@ -2,7 +2,7 @@
 
 use std::convert::Infallible;
 
-use crate::{Packet, PacketDecodeContext, PacketDecodeError};
+use crate::{KnownPack, Packet, PacketDecodeContext, PacketDecodeError};
 use bytes::{Buf, BufMut};
 use delegate_display::DelegateDebug;
 use derive_more::derive::From;
@@ -83,26 +83,19 @@ packets! {
         #[protocol(ctx = IdentifierProtocolContext::SingleString)]
         key: Identifier<'a>,
     } = 0x00
-    ConfigurationClientboundPluginMessage<'a> {
+    ConfigurationClientboundPluginMessagePacket<'a> {
         #[protocol(ctx = IdentifierProtocolContext::SingleString)]
         channel: Identifier<'a>,
         #[protocol(ctx = ArrayProtocolContext::Remaining)]
         data: Cow<'a, [u8]>,
     } = 0x01
-    ConfigurationDisconnect {
+    ConfigurationDisconnectPacket {
         // TODO
     } = 0x02
-    ClientboundKnownPacks<'a> {
+    ClientboundKnownPacksPacket<'a> {
         #[protocol(ctx = ArrayProtocolContext::LengthPrefixed)]
         known_packs: Cow<'a, [KnownPack<'a>]>,
     } = 0x0E
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Protocol)]
-pub struct KnownPack<'a> {
-    #[protocol(ctx = IdentifierProtocolContext::DoubleString)]
-    pub identifier: Identifier<'a>,
-    pub version: Cow<'a, str>,
 }
 
 packets! {
