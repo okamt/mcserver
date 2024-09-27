@@ -57,12 +57,12 @@ packets! {
     LoginPluginRequestPacket<'a> {
         #[protocol(varint)]
         message_id: i32,
-        channel: Identifier,
+        channel: Identifier<'a>,
         #[protocol(ctx = ArrayProtocolContext::Remaining)]
         data: Cow<'a, [u8]>,
     } = 0x04
-    LoginCookieRequestPacket {
-        key: Identifier,
+    LoginCookieRequestPacket<'a> {
+        key: Identifier<'a>,
     } = 0x05
 }
 
@@ -77,11 +77,11 @@ pub struct ClientLoginSuccessProperty<'a> {
 packets! {
     ClientConfigurationPacket<'a>
 
-    ConfigurationCookieRequestPacket {
-        key: Identifier,
+    ConfigurationCookieRequestPacket<'a> {
+        key: Identifier<'a>,
     } = 0x00
     ConfigurationClientboundPluginMessage<'a> {
-        channel: Identifier,
+        channel: Identifier<'a>,
         #[protocol(ctx = ArrayProtocolContext::Remaining)]
         data: Cow<'a, [u8]>,
     } = 0x01

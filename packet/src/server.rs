@@ -74,7 +74,7 @@ packets! {
         allow_server_listings: bool,
     } = 0x00
     ServerboundPluginMessagePacket<'a> {
-        channel_identifier: Identifier,
+        channel_identifier: Identifier<'a>,
         #[protocol(ctx = ArrayProtocolContext::Remaining)]
         data: Cow<'a, [u8]>,
     } = 0x02

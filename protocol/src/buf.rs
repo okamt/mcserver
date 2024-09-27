@@ -249,7 +249,7 @@ impl Decodable for Uuid {
     }
 }
 
-impl Encodable for Identifier {
+impl Encodable for Identifier<'_> {
     type Context = ();
     type Error = Infallible;
 
@@ -263,7 +263,7 @@ impl Encodable for Identifier {
     }
 }
 
-impl Decodable for Identifier {
+impl Decodable for Identifier<'_> {
     type Context = ();
     type Error = Infallible;
 
@@ -505,7 +505,9 @@ pub fn get_bool<B: Buf + ?Sized>(buf: &mut B) -> bool {
     buf.get_u8() == 0x01
 }
 
-pub fn get_identifier<B: Buf + ?Sized>(buf: &mut B) -> Result<Identifier, GetIdentifierError> {
+pub fn get_identifier<B: Buf + ?Sized>(
+    buf: &mut B,
+) -> Result<Identifier<'static>, GetIdentifierError> {
     Ok(get_string(buf)?.try_into()?)
 }
 

@@ -1,21 +1,25 @@
-use std::fmt::{Display, Write};
+use std::{
+    borrow::Cow,
+    fmt::{Display, Write},
+};
 
+use cowext::CowStrExt;
 use thiserror::Error;
 
 const IDENTIFIER_MAX_LEN: usize = 32767;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Identifier {
-    namespace: String,
-    value: String,
+pub struct Identifier<'a> {
+    namespace: Option<Cow<'a, str>>,
+    value: Cow<'a, str>,
 }
 
-impl Identifier {
-    pub fn from_string(string: impl ToString) -> Result<Self, IdentifierError> {
-        let string = string.to_string();
+impl<'a> Identifier<'a> {
+    pub fn from_string(string: impl Into<Cow<'a, str>>) -> Result<Self, IdentifierError> {
+        let string: Cow<'a, str> = string.into();
 
         if string.len() > IDENTIFIER_MAX_LEN {
-            return Err(IdentifierError::TooLong(string));
+            return Err(IdentifierError::TooLong(string.to_string()));
         }
 
         let mut colon_i = 0;
@@ -25,18 +29,29 @@ impl Identifier {
                 'a'..='z' | '0'..='9' | '.' | '-' | '_' => continue,
                 ':' if colon_i == 0 => colon_i = i,
                 '/' if colon_i != 0 => continue,
-                _ => return Err(IdentifierError::IllegalCharacter(string, i)),
+                _ => return Err(IdentifierError::IllegalCharacter(string.to_string(), i)),
             }
         }
 
-        Ok(Self {
-            namespace: string[..colon_i].to_string(),
-            value: string[colon_i + 1..].to_string(),
+        Ok(if colon_i == 0 {
+            Self {
+                namespace: None,
+                value: string,
+            }
+        } else {
+            let (mut left, right) = string.split_at(colon_i + 1);
+            left.pop();
+            Self {
+                namespace: Some(left),
+                value: right,
+            }
         })
     }
 
     pub fn namespace(&self) -> &str {
-        &self.namespace
+        self.namespace
+            .as_ref()
+            .unwrap_or(&Cow::Borrowed("minecraft"))
     }
 
     pub fn value(&self) -> &str {
@@ -44,7 +59,7 @@ impl Identifier {
     }
 }
 
-impl TryFrom<String> for Identifier {
+impl TryFrom<String> for Identifier<'static> {
     type Error = IdentifierError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
@@ -52,9 +67,9 @@ impl TryFrom<String> for Identifier {
     }
 }
 
-impl Display for Identifier {
+impl Display for Identifier<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.namespace.fmt(f)?;
+        self.namespace().fmt(f)?;
         f.write_char(':')?;
         self.value.fmt(f)
     }

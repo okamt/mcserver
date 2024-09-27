@@ -12,3 +12,4 @@ uuid = { version = "1.10.0", features = ["serde", "v4", "fast-rng"] }
 protocol-derive = { path = "../protocol-derive" }
 serde_json = "1.0.128"
 num_enum = "0.7.3"
+cowext = { git = "https://github.com/okamt/cowext" }
