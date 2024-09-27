@@ -15,11 +15,11 @@ pub struct Identifier<'a> {
 }
 
 impl<'a> Identifier<'a> {
-    pub fn from_string(string: impl Into<Cow<'a, str>>) -> Result<Self, IdentifierError> {
+    pub fn from_string(string: impl Into<Cow<'a, str>>) -> Result<Self, IdentifierParseError> {
         let string: Cow<'a, str> = string.into();
 
         if string.len() > IDENTIFIER_MAX_LEN {
-            return Err(IdentifierError::TooLong(string.to_string()));
+            return Err(IdentifierParseError::TooLong(string.to_string()));
         }
 
         let mut colon_i = 0;
@@ -29,7 +29,12 @@ impl<'a> Identifier<'a> {
                 'a'..='z' | '0'..='9' | '.' | '-' | '_' => continue,
                 ':' if colon_i == 0 => colon_i = i,
                 '/' if colon_i != 0 => continue,
-                _ => return Err(IdentifierError::IllegalCharacter(string.to_string(), i)),
+                _ => {
+                    return Err(IdentifierParseError::IllegalCharacter(
+                        string.to_string(),
+                        i,
+                    ))
+                }
             }
         }
 
@@ -48,6 +53,42 @@ impl<'a> Identifier<'a> {
         })
     }
 
+    pub fn from_parts(
+        namespace: impl Into<Cow<'a, str>>,
+        value: impl Into<Cow<'a, str>>,
+    ) -> Result<Self, IdentifierParseError> {
+        let (namespace, value): (Cow<'a, str>, Cow<'a, str>) = (namespace.into(), value.into());
+
+        for (i, c) in namespace.char_indices() {
+            match c {
+                'a'..='z' | '0'..='9' | '.' | '-' | '_' => continue,
+                _ => {
+                    return Err(IdentifierParseError::IllegalCharacter(
+                        namespace.to_string(),
+                        i,
+                    ))
+                }
+            }
+        }
+
+        for (i, c) in value.char_indices() {
+            match c {
+                'a'..='z' | '0'..='9' | '.' | '-' | '_' | '/' => continue,
+                _ => {
+                    return Err(IdentifierParseError::IllegalCharacter(
+                        namespace.to_string(),
+                        i,
+                    ))
+                }
+            }
+        }
+
+        Ok(Identifier {
+            namespace: Some(namespace),
+            value,
+        })
+    }
+
     pub fn namespace(&self) -> &str {
         self.namespace
             .as_ref()
@@ -60,7 +101,7 @@ impl<'a> Identifier<'a> {
 }
 
 impl TryFrom<String> for Identifier<'static> {
-    type Error = IdentifierError;
+    type Error = IdentifierParseError;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Identifier::from_string(value)
@@ -76,7 +117,7 @@ impl Display for Identifier<'_> {
 }
 
 #[derive(Debug, Error)]
-pub enum IdentifierError {
+pub enum IdentifierParseError {
     #[error(
         "identifier {0} is too long, must be at most {} characters",
         IDENTIFIER_MAX_LEN

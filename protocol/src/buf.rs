@@ -6,7 +6,7 @@ use num_enum::TryFromPrimitive;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::identifier::{Identifier, IdentifierError};
+use crate::identifier::{Identifier, IdentifierParseError};
 
 const VARINT_SEGMENT_BITS: u8 = 0b01111111;
 const VARINT_CONTINUE_BIT: u8 = 0b10000000;
@@ -277,7 +277,15 @@ impl Decodable for Identifier<'_> {
     where
         Self: Sized,
     {
-        Ok(get_identifier(buf)?)
+        Ok(match ctx {
+            IdentifierProtocolContext::SingleString => get_identifier(buf)?,
+            IdentifierProtocolContext::DoubleString => {
+                let namespace = get_string(buf)?;
+                let value = get_string(buf)?;
+                Identifier::from_parts(namespace, value)
+                    .map_err(|e| DecodeError::Identifier(GetIdentifierError::Identifier(e)))?
+            }
+        })
     }
 }
 
@@ -620,7 +628,7 @@ pub enum GetIdentifierError {
     #[error(transparent)]
     String(#[from] GetStringError),
     #[error(transparent)]
-    Identifier(#[from] IdentifierError),
+    Identifier(#[from] IdentifierParseError),
 }
 
 #[cfg(test)]
