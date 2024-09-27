@@ -70,10 +70,10 @@ packets! {
 
 #[derive(Debug, Clone, Eq, PartialEq, Protocol)]
 pub struct ClientLoginSuccessProperty<'a> {
-    name: Cow<'a, str>,
-    value: Cow<'a, str>,
+    pub name: Cow<'a, str>,
+    pub value: Cow<'a, str>,
     #[protocol(ctx = OptionProtocolContext::BoolPrefixed)]
-    signature: Option<Cow<'a, str>>,
+    pub signature: Option<Cow<'a, str>>,
 }
 
 packets! {
@@ -101,8 +101,8 @@ packets! {
 #[derive(Debug, Clone, PartialEq, Eq, Protocol)]
 pub struct KnownPack<'a> {
     #[protocol(ctx = IdentifierProtocolContext::DoubleString)]
-    identifier: Identifier<'a>,
-    version: Cow<'a, str>,
+    pub identifier: Identifier<'a>,
+    pub version: Cow<'a, str>,
 }
 
 packets! {
