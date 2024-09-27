@@ -250,29 +250,43 @@ impl Decodable for Uuid {
 }
 
 impl Encodable for Identifier<'_> {
-    type Context = ();
+    type Context = IdentifierProtocolContext;
     type Error = Infallible;
 
     fn encode(
         &self,
         buf: &mut dyn BufMut,
-        _ctx: Self::Context,
+        ctx: Self::Context,
     ) -> Result<(), EncodeError<Self::Error>> {
-        put_identifier(buf, self);
+        match ctx {
+            IdentifierProtocolContext::SingleString => put_identifier(buf, self),
+            IdentifierProtocolContext::DoubleString => {
+                put_string(buf, &self.namespace());
+                put_string(buf, &self.value());
+            }
+        }
         Ok(())
     }
 }
 
 impl Decodable for Identifier<'_> {
-    type Context = ();
+    type Context = IdentifierProtocolContext;
     type Error = Infallible;
 
-    fn decode(buf: &mut dyn Buf, _ctx: Self::Context) -> Result<Self, DecodeError<Self::Error>>
+    fn decode(buf: &mut dyn Buf, ctx: Self::Context) -> Result<Self, DecodeError<Self::Error>>
     where
         Self: Sized,
     {
         Ok(get_identifier(buf)?)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdentifierProtocolContext {
+    /// Identifier is encoded as one string.
+    SingleString,
+    /// Identifier is encoded as two consecutive strings.
+    DoubleString,
 }
 
 // Temporarily disabled to make sure we use Cow<[T]> instead.

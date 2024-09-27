@@ -6,7 +6,7 @@ use std::convert::Infallible;
 use bytes::{Buf, BufMut};
 use delegate_display::DelegateDebug;
 use derive_more::derive::From;
-use protocol::buf::ArrayProtocolContext;
+use protocol::buf::{ArrayProtocolContext, IdentifierProtocolContext};
 use protocol::{
     identifier::Identifier, ChatMode, ConnectionState, Decodable, DisplayedSkinParts, Encodable,
     Hand,
@@ -74,6 +74,7 @@ packets! {
         allow_server_listings: bool,
     } = 0x00
     ServerboundPluginMessagePacket<'a> {
+        #[protocol(ctx = IdentifierProtocolContext::SingleString)]
         channel_identifier: Identifier<'a>,
         #[protocol(ctx = ArrayProtocolContext::Remaining)]
         data: Cow<'a, [u8]>,

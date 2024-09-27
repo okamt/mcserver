@@ -7,7 +7,7 @@ use bytes::{Buf, BufMut};
 use delegate_display::DelegateDebug;
 use derive_more::derive::From;
 use protocol::{
-    buf::{ArrayProtocolContext, OptionProtocolContext},
+    buf::{ArrayProtocolContext, IdentifierProtocolContext, OptionProtocolContext},
     identifier::Identifier,
     Decodable, DecodeError, Encodable, EncodeError,
 };
@@ -57,11 +57,13 @@ packets! {
     LoginPluginRequestPacket<'a> {
         #[protocol(varint)]
         message_id: i32,
+        #[protocol(ctx = IdentifierProtocolContext::SingleString)]
         channel: Identifier<'a>,
         #[protocol(ctx = ArrayProtocolContext::Remaining)]
         data: Cow<'a, [u8]>,
     } = 0x04
     LoginCookieRequestPacket<'a> {
+        #[protocol(ctx = IdentifierProtocolContext::SingleString)]
         key: Identifier<'a>,
     } = 0x05
 }
@@ -78,16 +80,29 @@ packets! {
     ClientConfigurationPacket<'a>
 
     ConfigurationCookieRequestPacket<'a> {
+        #[protocol(ctx = IdentifierProtocolContext::SingleString)]
         key: Identifier<'a>,
     } = 0x00
     ConfigurationClientboundPluginMessage<'a> {
+        #[protocol(ctx = IdentifierProtocolContext::SingleString)]
         channel: Identifier<'a>,
         #[protocol(ctx = ArrayProtocolContext::Remaining)]
         data: Cow<'a, [u8]>,
     } = 0x01
     ConfigurationDisconnect {
-
+        // TODO
     } = 0x02
+    ClientboundKnownPacks<'a> {
+        #[protocol(ctx = ArrayProtocolContext::LengthPrefixed)]
+        known_packs: Cow<'a, [KnownPack<'a>]>,
+    } = 0x0E
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Protocol)]
+pub struct KnownPack<'a> {
+    #[protocol(ctx = IdentifierProtocolContext::DoubleString)]
+    identifier: Identifier<'a>,
+    version: Cow<'a, str>,
 }
 
 packets! {
