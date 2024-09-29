@@ -2,6 +2,10 @@
 
 NBT parsing crate.
 
+Assumes a 64-bit platform.
+
+TODO: Write a better description.
+
 ## Design
 
 - Lazy: only parse what you need
