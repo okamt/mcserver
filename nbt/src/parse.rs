@@ -187,6 +187,12 @@ impl From<u64> for ListData {
 /// - <https://nickb.dev/blog/parsing-performance-improvement-with-tapes-and-spacial-locality/>
 pub struct Tape(pub(crate) Vec<TapeItem>);
 
+impl Debug for Tape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl<Idx> Index<Idx> for Tape
 where
     Vec<TapeItem>: Index<Idx>,
