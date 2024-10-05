@@ -2,7 +2,7 @@
 
 use std::borrow::Borrow;
 use std::fmt::Display;
-use std::ops::{ControlFlow, Deref};
+use std::ops::Deref;
 
 use visitor::{NbtPrettyPrinter, NbtVisitor, NbtVisitorStrategy, NbtVisitorStrategySerial};
 
@@ -61,6 +61,7 @@ where
 /// **A type-safe, ergonomic NBT value representation.**
 ///
 /// Allows chaining fallible access operations with extra compile time type safety, and stores parsing information for more ergonomic usage.
+#[derive(Clone)]
 pub struct NbtNode<'source, 'nbt, Value>
 where
     Value: NbtValueRepr,
@@ -139,7 +140,7 @@ where
     }
 }
 
-macro_rules! item_getter {
+macro_rules! container_getter {
     ($name:ident, $variant:ident, $ret:ty) => {
         pub fn $name(&self, key: impl Borrow<<Container as NbtMapRef>::Key>) -> Option<$ret> {
             self.value()?
@@ -152,7 +153,7 @@ macro_rules! item_getter {
     };
 }
 
-macro_rules! item_getter_ref {
+macro_rules! container_getter_ref {
     ($name:ident, $variant:ident, $ret:ty) => {
         pub fn $name(&self, key: impl Borrow<<Container as NbtMapRef>::Key>) -> Option<$ret> {
             self.value()?
@@ -165,7 +166,7 @@ macro_rules! item_getter_ref {
     };
 }
 
-macro_rules! node_getter {
+macro_rules! container_getter_node {
     ($name:ident, $variant:ident, $ret:ty) => {
         pub fn $name(
             &self,
@@ -193,18 +194,18 @@ impl<'source, 'nbt, Container> NbtNode<'source, 'nbt, Container>
 where
     Container: NbtContainer,
 {
-    item_getter!(byte, Byte, i8);
-    item_getter!(short, Short, i16);
-    item_getter!(int, Int, i32);
-    item_getter!(long, Long, i64);
-    item_getter!(float, Float, f32);
-    item_getter!(double, Double, f64);
-    item_getter_ref!(byte_array, ByteArray, &'nbt [i8]);
-    item_getter_ref!(string, String, &'nbt str);
-    node_getter!(list, List, NbtList);
-    item_getter_ref!(int_array, IntArray, &'nbt [i32]);
-    item_getter_ref!(long_array, LongArray, &'nbt [i64]);
-    node_getter!(compound, Compound, NbtCompound);
+    container_getter!(byte, Byte, i8);
+    container_getter!(short, Short, i16);
+    container_getter!(int, Int, i32);
+    container_getter!(long, Long, i64);
+    container_getter!(float, Float, f32);
+    container_getter!(double, Double, f64);
+    container_getter_ref!(byte_array, ByteArray, &'nbt [i8]);
+    container_getter_ref!(string, String, &'nbt str);
+    container_getter_node!(list, List, NbtList);
+    container_getter_ref!(int_array, IntArray, &'nbt [i32]);
+    container_getter_ref!(long_array, LongArray, &'nbt [i64]);
+    container_getter_node!(compound, Compound, NbtCompound);
 
     pub fn get(&self, key: impl Borrow<<Container as NbtMapRef>::Key>) -> Option<NbtValue> {
         Some(self.value()?.get(self.parser, key.borrow())?.value)
@@ -226,28 +227,24 @@ where
     }
 
     /// Visits this [`NbtContainer`] with an [`NbtVisitor`], using an [`NbtVisitorStrategy`].
-    pub fn visit_with_strategy<V, S, R, B, C>(
-        &self,
-        mut visitor: V,
-        mut strategy: S,
-    ) -> Result<R, B>
+    pub fn visit_with_strategy<V, S>(&self, mut visitor: V, mut strategy: S) -> Result<(), V::Err>
     where
-        V: NbtVisitor<B, C, R>,
-        S: NbtVisitorStrategy<V, B, C, R>,
+        V: NbtVisitor<'source, 'nbt>,
+        S: NbtVisitorStrategy,
     {
-        while let Some(flow) = strategy.next(self.parser, &mut visitor) {
-            match flow {
-                ControlFlow::Continue(_) => {}
-                ControlFlow::Break(b) => return Err(b),
+        loop {
+            match strategy.step(self.parser, &mut visitor) {
+                None => return Ok(()),
+                Some(Err(err)) => return Err(err),
+                _ => {}
             }
         }
-        Ok(visitor.result())
     }
 
     /// Visits this [`NbtContainer`] with an [`NbtVisitor`], using [`NbtVisitorStrategySerial`].
-    pub fn visit<V, R, B, C>(&self, visitor: V) -> Result<R, B>
+    pub fn visit<V>(&self, visitor: V) -> Result<(), V::Err>
     where
-        V: NbtVisitor<B, C, R>,
+        V: NbtVisitor<'source, 'nbt>,
     {
         let strategy = NbtVisitorStrategySerial::from_container(self.value().unwrap());
         self.visit_with_strategy(visitor, strategy)
@@ -275,6 +272,35 @@ macro_rules! value_getter {
     };
 }
 
+macro_rules! value_getter_ref {
+    ($name:ident, $variant:ident, $ret:ty) => {
+        pub fn $name(&self) -> Option<$ret> {
+            self.and_then(|v| match v {
+                NbtValue::$variant(v) => Some(v.parse(self.parser)),
+                _ => None,
+            })
+        }
+    };
+}
+
+macro_rules! value_getter_node {
+    ($name:ident, $variant:ident, $ret:ty) => {
+        pub fn $name(&self) -> NbtNode<'source, 'nbt, $ret> {
+            let inner = self.value().and_then(|v| match v {
+                NbtValue::$variant(value) => Some(NbtNodeRef {
+                    tape_pos: Some(value.tape_pos()),
+                    value,
+                }),
+                _ => None,
+            });
+            NbtNode {
+                parser: self.parser,
+                inner,
+            }
+        }
+    };
+}
+
 impl<'source, 'nbt> NbtNode<'source, 'nbt, NbtValue> {
     value_getter!(byte, Byte, i8);
     value_getter!(short, Short, i16);
@@ -282,6 +308,12 @@ impl<'source, 'nbt> NbtNode<'source, 'nbt, NbtValue> {
     value_getter!(long, Long, i64);
     value_getter!(float, Float, f32);
     value_getter!(double, Double, f64);
+    value_getter_ref!(byte_array, ByteArray, &'nbt [i8]);
+    value_getter_ref!(string, String, &'nbt str);
+    value_getter_node!(list, List, NbtList);
+    value_getter_ref!(int_array, IntArray, &'nbt [i32]);
+    value_getter_ref!(long_array, LongArray, &'nbt [i64]);
+    value_getter_node!(compound, Compound, NbtCompound);
 }
 
 impl<'source, 'nbt> Display for NbtNode<'source, 'nbt, NbtValue> {
