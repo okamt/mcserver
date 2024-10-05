@@ -1,16 +1,29 @@
 //! Visitor API.
 
-use std::{fmt::Write, ops::ControlFlow};
+use std::fmt::Write;
 
 use super::*;
 
-pub trait NbtVisitor<B, C = (), R = ()> {
-    fn visit_value(&mut self, value: &NbtNode<'_, '_, NbtValue>) -> ControlFlow<B, C>;
-    fn enter_compound(&mut self, compound: &NbtNode<'_, '_, NbtCompound>) -> ControlFlow<B, C>;
-    fn leave_compound(&mut self, compound: &NbtNode<'_, '_, NbtCompound>) -> ControlFlow<B, C>;
-    fn enter_list(&mut self, list: &NbtNode<'_, '_, NbtList>) -> ControlFlow<B, C>;
-    fn leave_list(&mut self, list: &NbtNode<'_, '_, NbtList>) -> ControlFlow<B, C>;
-    fn result(&mut self) -> R;
+pub trait NbtVisitor<'source, 'nbt> {
+    type Ok;
+    type Err;
+
+    fn visit_value(
+        &mut self,
+        value: &NbtNode<'source, 'nbt, NbtValue>,
+    ) -> Result<Self::Ok, Self::Err>;
+    fn enter_compound(
+        &mut self,
+        compound: &NbtNode<'source, 'nbt, NbtCompound>,
+    ) -> Result<Self::Ok, Self::Err>;
+    fn leave_compound(
+        &mut self,
+        compound: &NbtNode<'source, 'nbt, NbtCompound>,
+    ) -> Result<Self::Ok, Self::Err>;
+    fn enter_list(&mut self, list: &NbtNode<'source, 'nbt, NbtList>)
+        -> Result<Self::Ok, Self::Err>;
+    fn leave_list(&mut self, list: &NbtNode<'source, 'nbt, NbtList>)
+        -> Result<Self::Ok, Self::Err>;
 }
 
 pub struct NbtPrettyPrinter<'w, W>
@@ -34,64 +47,73 @@ where
         }
     }
 
-    fn write_indent(&mut self) {
+    fn write_indent(&mut self) -> std::fmt::Result {
         for _ in 0..(self.indent_size * self.indent_level) {
-            _ = self.writer.write_char(' ');
+            _ = self.writer.write_char(' ')?;
         }
+        Ok(())
     }
 }
 
-impl<'w, W> NbtVisitor<()> for NbtPrettyPrinter<'w, W>
+impl<'w, W> NbtVisitor<'_, '_> for NbtPrettyPrinter<'w, W>
 where
     W: Write,
 {
-    fn visit_value(&mut self, value: &NbtNode<'_, '_, NbtValue>) -> ControlFlow<(), ()> {
-        self.write_indent();
+    type Ok = ();
+    type Err = std::fmt::Error;
+
+    fn visit_value(&mut self, value: &NbtNode<'_, '_, NbtValue>) -> Result<Self::Ok, Self::Err> {
+        self.write_indent()?;
         if let Some(name) = value.name() {
-            _ = write!(self.writer, "{}: ", name);
+            write!(self.writer, "{}: ", name)?;
         }
-        _ = write!(self.writer, "{}\n", value);
-        ControlFlow::Continue(())
+        write!(self.writer, "{}\n", value)
     }
 
-    fn enter_compound(&mut self, compound: &NbtNode<'_, '_, NbtCompound>) -> ControlFlow<(), ()> {
-        self.write_indent();
+    fn enter_compound(
+        &mut self,
+        compound: &NbtNode<'_, '_, NbtCompound>,
+    ) -> Result<Self::Ok, Self::Err> {
+        self.write_indent()?;
         if let Some(name) = compound.name() {
-            _ = write!(self.writer, "{} ", name);
+            if name.len() > 0 {
+                write!(self.writer, "{} ", name)?;
+            }
         }
-        _ = write!(self.writer, "{{\n");
         self.indent_level += 1;
-        ControlFlow::Continue(())
+        write!(self.writer, "{{\n")
     }
 
-    fn leave_compound(&mut self, _compound: &NbtNode<'_, '_, NbtCompound>) -> ControlFlow<(), ()> {
+    fn leave_compound(
+        &mut self,
+        _compound: &NbtNode<'_, '_, NbtCompound>,
+    ) -> Result<Self::Ok, Self::Err> {
         self.indent_level -= 1;
-        self.write_indent();
-        _ = write!(self.writer, "}}\n");
-        ControlFlow::Continue(())
+        self.write_indent()?;
+        write!(self.writer, "}}\n")
     }
 
-    fn enter_list(&mut self, list: &NbtNode<'_, '_, NbtList>) -> ControlFlow<(), ()> {
-        self.write_indent();
-        _ = write!(self.writer, "{} [\n", list.name().unwrap());
+    fn enter_list(&mut self, list: &NbtNode<'_, '_, NbtList>) -> Result<Self::Ok, Self::Err> {
+        self.write_indent()?;
         self.indent_level += 1;
-        ControlFlow::Continue(())
+        write!(self.writer, "{} [\n", list.name().unwrap())
     }
 
-    fn leave_list(&mut self, _list: &NbtNode<'_, '_, NbtList>) -> ControlFlow<(), ()> {
+    fn leave_list(&mut self, _list: &NbtNode<'_, '_, NbtList>) -> Result<Self::Ok, Self::Err> {
         self.indent_level -= 1;
-        self.write_indent();
-        _ = write!(self.writer, "]\n");
-        ControlFlow::Continue(())
-    }
-
-    fn result(&mut self) -> () {
-        ()
+        self.write_indent()?;
+        write!(self.writer, "]\n")
     }
 }
 
-pub trait NbtVisitorStrategy<V: NbtVisitor<B, C, R>, B, C = (), R = ()> {
-    fn next(&mut self, parser: &NbtParser, visitor: &mut V) -> Option<ControlFlow<B, C>>;
+pub trait NbtVisitorStrategy {
+    fn step<'source, 'nbt, V: NbtVisitor<'source, 'nbt>>(
+        &mut self,
+        parser: &'nbt NbtParser<'source>,
+        visitor: &mut V,
+    ) -> Option<Result<V::Ok, V::Err>>
+    where
+        'source: 'nbt;
 }
 
 pub struct NbtVisitorStrategySerial {
@@ -101,6 +123,14 @@ pub struct NbtVisitorStrategySerial {
 }
 
 impl NbtVisitorStrategySerial {
+    pub fn from_root() -> Self {
+        Self {
+            container_tape_pos: 0,
+            tape_pos: 0,
+            finished: false,
+        }
+    }
+
     pub fn from_container<C>(container: C) -> Self
     where
         C: NbtContainer,
@@ -113,11 +143,15 @@ impl NbtVisitorStrategySerial {
     }
 }
 
-impl<V, B, C, R> NbtVisitorStrategy<V, B, C, R> for NbtVisitorStrategySerial
-where
-    V: NbtVisitor<B, C, R>,
-{
-    fn next(&mut self, parser: &NbtParser, visitor: &mut V) -> Option<ControlFlow<B, C>> {
+impl NbtVisitorStrategy for NbtVisitorStrategySerial {
+    fn step<'source, 'nbt, V: NbtVisitor<'source, 'nbt>>(
+        &mut self,
+        parser: &'nbt NbtParser<'source>,
+        visitor: &mut V,
+    ) -> Option<Result<V::Ok, V::Err>>
+    where
+        'source: 'nbt,
+    {
         if self.finished {
             return None;
         }
@@ -161,6 +195,58 @@ where
             ),
         };
         self.tape_pos += 1;
+        if result.is_err() {
+            self.finished = true;
+        }
         Some(result)
+    }
+}
+
+pub struct NbtVisitorIterator<'nbt, 'source, V, S>
+where
+    V: NbtVisitor<'source, 'nbt>,
+    S: NbtVisitorStrategy,
+{
+    visitor: V,
+    strategy: S,
+    parser: &'nbt NbtParser<'source>,
+}
+
+impl<'nbt, 'source, V, S> NbtVisitorIterator<'nbt, 'source, V, S>
+where
+    V: NbtVisitor<'source, 'nbt>,
+    S: NbtVisitorStrategy,
+{
+    pub fn new(visitor: V, strategy: S, parser: &'nbt NbtParser<'source>) -> Self {
+        Self {
+            visitor,
+            strategy,
+            parser,
+        }
+    }
+}
+
+impl<'nbt, 'source, V> NbtVisitorIterator<'nbt, 'source, V, NbtVisitorStrategySerial>
+where
+    V: NbtVisitor<'source, 'nbt>,
+{
+    pub fn with_serial_strategy(visitor: V, parser: &'nbt NbtParser<'source>) -> Self {
+        Self {
+            visitor,
+            strategy: NbtVisitorStrategySerial::from_root(),
+            parser,
+        }
+    }
+}
+
+impl<'nbt, 'source, V, S> Iterator for NbtVisitorIterator<'nbt, 'source, V, S>
+where
+    V: NbtVisitor<'source, 'nbt>,
+    S: NbtVisitorStrategy,
+{
+    type Item = Result<V::Ok, V::Err>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.strategy.step(self.parser, &mut self.visitor)
     }
 }
