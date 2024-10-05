@@ -20,6 +20,26 @@ pub enum NbtValue {
     LongArray(NbtLongArray),
 }
 
+impl NbtValue {
+    pub fn tag(&self) -> Tag {
+        match self {
+            NbtValue::End => Tag::End,
+            NbtValue::Byte(_) => Tag::Byte,
+            NbtValue::Short(_) => Tag::Short,
+            NbtValue::Int(_) => Tag::Int,
+            NbtValue::Long(_) => Tag::Long,
+            NbtValue::Float(_) => Tag::Float,
+            NbtValue::Double(_) => Tag::Double,
+            NbtValue::ByteArray(_) => Tag::ByteArray,
+            NbtValue::String(_) => Tag::String,
+            NbtValue::List(_) => Tag::List,
+            NbtValue::Compound(_) => Tag::Compound,
+            NbtValue::IntArray(_) => Tag::IntArray,
+            NbtValue::LongArray(_) => Tag::LongArray,
+        }
+    }
+}
+
 /// Part of [`NbtValue`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NbtByteArray(pub(crate) usize);
