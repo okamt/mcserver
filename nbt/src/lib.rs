@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::ops::Deref;
 use std::{borrow::Cow, collections::HashMap, fmt::Debug, ops::Index};
 
 use crate::marker::*;
@@ -13,6 +14,8 @@ pub mod iterator;
 pub mod marker;
 pub mod node;
 pub(crate) mod parse;
+#[cfg(feature = "serde")]
+pub mod serde;
 pub(crate) mod tag;
 pub mod value;
 pub mod visitor;
@@ -77,6 +80,7 @@ struct NbtCache<'nbt> {
     pub(crate) compounds: OnceMap<usize, Box<HashMap<Cow<'nbt, str>, NbtNodeRef<NbtValue>>>>,
     pub(crate) lists: OnceMap<usize, Vec<NbtNodeRef<NbtValue>>>,
     pub(crate) strings: OnceMap<usize, Cow<'nbt, str>>,
+    pub(crate) names: OnceMap<usize, Cow<'nbt, str>>,
 }
 
 self_cell!(
@@ -110,6 +114,7 @@ impl<'source> NbtParser<'source> {
                 compounds: OnceMap::new(),
                 lists: OnceMap::new(),
                 strings: OnceMap::new(),
+                names: OnceMap::new(),
             }
         })))
     }
@@ -143,16 +148,41 @@ impl<'source> NbtParser<'source> {
         NbtIterator::from_root(&self)
     }
 
-    pub(crate) fn get_name<'nbt>(&'nbt self, tape_item: &TapeItem) -> Cow<'nbt, str> {
-        self.0.borrow_owner().get_name(tape_item)
-    }
-
-    pub(crate) fn get_name_at<'nbt>(&'nbt self, tape_pos: usize) -> Cow<'nbt, str> {
-        self.0.borrow_owner().get_name_at(tape_pos)
+    pub(crate) fn get_name_at<'nbt>(&'nbt self, tape_pos: usize) -> &'nbt str {
+        self.with_cache(|nbt, cache| cache.names.insert(tape_pos, |_| nbt.get_name_at(tape_pos)))
     }
 
     pub(crate) fn parse_at(&self, tape_pos: usize) -> NbtParseResult {
         self.0.borrow_owner().parse_at(tape_pos)
+    }
+}
+
+/// An [`NbtParser`] that is either owned or borrowed.
+pub enum NbtParserCow<'source, 'nbt> {
+    Owned(NbtParser<'source>),
+    Borrowed(&'nbt NbtParser<'source>),
+}
+
+impl<'source, 'nbt> Into<NbtParserCow<'source, 'nbt>> for NbtParser<'source> {
+    fn into(self) -> NbtParserCow<'source, 'nbt> {
+        NbtParserCow::Owned(self)
+    }
+}
+
+impl<'source, 'nbt> Into<NbtParserCow<'source, 'nbt>> for &'nbt NbtParser<'source> {
+    fn into(self) -> NbtParserCow<'source, 'nbt> {
+        NbtParserCow::Borrowed(&self)
+    }
+}
+
+impl<'source, 'nbt> Deref for NbtParserCow<'source, 'nbt> {
+    type Target = NbtParser<'source>;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            NbtParserCow::Owned(parser) => parser,
+            NbtParserCow::Borrowed(parser) => parser,
+        }
     }
 }
 
@@ -211,13 +241,13 @@ mod test {
 
     #[test]
     fn bigtest_cache() {
-        /*let parser = get_bigtest_parser();
+        let parser = get_bigtest_parser();
 
         parser.with_cache(|_nbt, cache| assert_eq!(cache.compounds.read_only_view().len(), 0));
         assert_eq!(parser.root().byte("byteTest"), Some(127));
         parser.with_cache(|_nbt, cache| {
             assert_eq!(cache.compounds.read_only_view().len(), 1);
             assert!(cache.compounds.get(&0).is_some());
-        });*/
+        });
     }
 }

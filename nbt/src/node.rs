@@ -109,7 +109,7 @@ where
         }
     }
 
-    pub fn name(&self) -> Option<Cow<'nbt, str>> {
+    pub fn name(&self) -> Option<&'nbt str> {
         if self.is_list_item() {
             None
         } else {

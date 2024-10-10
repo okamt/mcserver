@@ -1,6 +1,6 @@
 //! Iterator over NBT containers.
 
-use std::{borrow::Cow, marker::PhantomData};
+use std::marker::PhantomData;
 
 use super::*;
 
@@ -43,7 +43,7 @@ impl<'source, 'nbt> NbtIterator<'source, 'nbt, NbtCompound> {
 }
 
 impl<'source, 'nbt> Iterator for NbtIterator<'source, 'nbt, NbtCompound> {
-    type Item = (Cow<'nbt, str>, NbtNode<'source, 'nbt, NbtValue>);
+    type Item = (&'nbt str, NbtNode<'source, 'nbt, NbtValue>);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {

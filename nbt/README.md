@@ -15,7 +15,7 @@ TODO: Write a better description.
 
 - [x] Cache parsed results
 - [ ] Write more tests
-- [ ] Ser/de from/into structs
-- [ ] Switch to byteorder maybe
+- [x] Ser/de from/into structs
+- [ ] Switch to byteorder
 - [x] Format NBT
 - [x] Visitor API
