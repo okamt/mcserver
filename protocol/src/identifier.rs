@@ -3,15 +3,19 @@ use std::{
     fmt::{Display, Write},
 };
 
-use cowext::CowStrExt;
+use cowext::{CowExt, CowStrExt};
+use ownable::{IntoOwned, ToBorrowed, ToOwned};
+use serde::Deserialize;
+use serde_with::SerializeDisplay;
 use thiserror::Error;
 
 const IDENTIFIER_MAX_LEN: usize = 32767;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq, SerializeDisplay, Deserialize, IntoOwned, ToBorrowed, ToOwned)]
+#[serde(try_from = "String")]
 pub struct Identifier<'a> {
-    namespace: Option<Cow<'a, str>>,
-    value: Cow<'a, str>,
+    pub(crate) namespace: Option<Cow<'a, str>>,
+    pub(crate) value: Cow<'a, str>,
 }
 
 impl<'a> Identifier<'a> {
@@ -98,6 +102,16 @@ impl<'a> Identifier<'a> {
     pub fn value(&self) -> &str {
         &self.value
     }
+
+    pub fn as_borrowed<'b>(&'b self) -> Identifier<'b>
+    where
+        'b: 'a,
+    {
+        Self {
+            namespace: self.namespace.as_ref().map(|v| v.as_borrowed()),
+            value: self.value.as_borrowed(),
+        }
+    }
 }
 
 impl TryFrom<String> for Identifier<'static> {
@@ -110,9 +124,17 @@ impl TryFrom<String> for Identifier<'static> {
 
 impl Display for Identifier<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.namespace().fmt(f)?;
-        f.write_char(':')?;
+        if let Some(namespace) = &self.namespace {
+            namespace.fmt(f)?;
+            f.write_char(':')?;
+        }
         self.value.fmt(f)
+    }
+}
+
+impl PartialEq for Identifier<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.namespace() == other.namespace() && self.value == other.value
     }
 }
 

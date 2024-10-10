@@ -399,8 +399,8 @@ pub enum ArrayProtocolContext {
     FixedLength(usize),
 }
 
-impl<T: Encodable<Context = ()>> Encodable for Option<T> {
-    type Context = OptionProtocolContext;
+impl<T: Encodable> Encodable for Option<T> {
+    type Context = (OptionProtocolContext, <T as Encodable>::Context);
     type Error = <T as Encodable>::Error;
 
     fn encode(
@@ -408,31 +408,31 @@ impl<T: Encodable<Context = ()>> Encodable for Option<T> {
         buf: &mut dyn BufMut,
         ctx: Self::Context,
     ) -> Result<(), EncodeError<Self::Error>> {
-        match ctx {
+        match ctx.0 {
             OptionProtocolContext::BoolPrefixed => put_bool(buf, self.is_some()),
             OptionProtocolContext::Remaining => {}
         }
         match self {
-            Some(value) => value.encode(buf, ()),
+            Some(value) => value.encode(buf, ctx.1),
             None => Ok(()),
         }
     }
 }
 
-impl<T: Decodable<Context = ()>> Decodable for Option<T> {
-    type Context = OptionProtocolContext;
+impl<T: Decodable> Decodable for Option<T> {
+    type Context = (OptionProtocolContext, <T as Decodable>::Context);
     type Error = <T as Decodable>::Error;
 
     fn decode(buf: &mut dyn Buf, ctx: Self::Context) -> Result<Self, DecodeError<Self::Error>>
     where
         Self: Sized,
     {
-        let is_present = match ctx {
+        let is_present = match ctx.0 {
             OptionProtocolContext::BoolPrefixed => get_bool(buf),
             OptionProtocolContext::Remaining => buf.has_remaining(),
         };
         match is_present {
-            true => <T as Decodable>::decode(buf, ()).map(Some),
+            true => <T as Decodable>::decode(buf, ctx.1).map(Some),
             false => Ok(None),
         }
     }

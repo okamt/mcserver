@@ -1,14 +1,20 @@
-use std::convert::Infallible;
+use std::{borrow::Cow, convert::Infallible};
 
 use bitflags::bitflags;
+use enum_map::Enum;
 use getset::Getters;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use ownable::{IntoOwned, ToBorrowed, ToOwned};
 use protocol_derive::Protocol;
 
 pub mod buf;
 pub mod identifier;
+pub mod text;
 
 pub use buf::{Decodable, DecodeError, Encodable, EncodeError};
+pub use identifier::*;
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, BorrowCow};
 
 use crate as protocol;
 
@@ -91,4 +97,25 @@ pub struct ClientInformation {
     pub main_hand: Hand,
     pub enable_text_filtering: bool,
     pub allow_server_listings: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArmorMaterial {
+    Leather,
+    Chainmail,
+    Iron,
+    Gold,
+    Diamond,
+    Turtle,
+    Netherite,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, IntoOwned, ToBorrowed, ToOwned)]
+pub struct Score<'a> {
+    #[serde_as(as = "BorrowCow")]
+    name: Cow<'a, str>,
+    #[serde_as(as = "BorrowCow")]
+    objective: Cow<'a, str>,
 }

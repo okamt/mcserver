@@ -72,7 +72,7 @@ packets! {
 pub struct ClientLoginSuccessProperty<'a> {
     pub name: Cow<'a, str>,
     pub value: Cow<'a, str>,
-    #[protocol(ctx = OptionProtocolContext::BoolPrefixed)]
+    #[protocol(ctx = (OptionProtocolContext::BoolPrefixed, ()))]
     pub signature: Option<Cow<'a, str>>,
 }
 
@@ -92,10 +92,24 @@ packets! {
     ConfigurationDisconnectPacket {
         // TODO
     } = 0x02
+    RegistryDataPacket<'a> {
+        #[protocol(ctx = IdentifierProtocolContext::SingleString)]
+        registry_id: Identifier<'a>,
+        #[protocol(ctx = ArrayProtocolContext::LengthPrefixed)]
+        registry_entries: Cow<'a, [RegistryEntry<'a>]>,
+    } = 0x07
     ClientboundKnownPacksPacket<'a> {
         #[protocol(ctx = ArrayProtocolContext::LengthPrefixed)]
         known_packs: Cow<'a, [KnownPack<'a>]>,
     } = 0x0E
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Protocol)]
+pub struct RegistryEntry<'a> {
+    #[protocol(ctx = IdentifierProtocolContext::SingleString)]
+    id: Identifier<'a>,
+    #[protocol(ctx = (OptionProtocolContext::BoolPrefixed, ()))]
+    data: Option<Nbt>, // TODO
 }
 
 packets! {
