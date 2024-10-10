@@ -3,7 +3,7 @@ use std::{
     fmt::{Display, Write},
 };
 
-use cowext::{CowExt, CowStrExt};
+use cowext::CowStrExt;
 use ownable::{IntoOwned, ToBorrowed, ToOwned};
 use serde::Deserialize;
 use serde_with::SerializeDisplay;
@@ -108,8 +108,8 @@ impl<'a> Identifier<'a> {
         'b: 'a,
     {
         Self {
-            namespace: self.namespace.as_ref().map(|v| v.as_borrowed()),
-            value: self.value.as_borrowed(),
+            namespace: self.namespace.as_ref().map(|v| Cow::Borrowed(v.as_ref())),
+            value: Cow::Borrowed(self.value.as_ref()),
         }
     }
 }
